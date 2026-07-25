@@ -62,3 +62,34 @@ Decisions worth knowing if you continue this:
 
 Natural next steps (not started): permission prompts, session
 save/resume, streaming output, grep/glob search tools, automated tests.
+
+---
+
+## [2026-07-25] Pushed to GitHub (private) + wrote a real README
+
+- Ran `git init` (already done earlier this session) then
+  `gh repo create coding-agent --private --source=. --remote=origin --push`.
+  Repo is at https://github.com/shrijayan/coding-agent, confirmed
+  `visibility: PRIVATE` via `gh repo view`. `.env` stayed untracked
+  (gitignored) - only `.env.example` went up.
+- Rewrote README.md from an empty placeholder into a full setup/usage
+  guide, explicitly aimed at non-engineers (business users, beginners,
+  students) since this project is being used for demos. Structure: what
+  it is (with a plain analogy) -> a real example transcript -> what it
+  can/can't do -> prerequisites -> numbered setup steps (install uv, get
+  the code, `uv sync`, get an API key, configure `.env`, run it) -> demo
+  prompts to try -> settings reference table -> troubleshooting table ->
+  safety note -> pointer to AGENTS.md for the internals.
+- Every command and error message quoted in the README was actually run,
+  not guessed - including the demo transcript in section 1, the
+  multi-step notes.txt demo, and the Fibonacci demo, all in a scratch
+  temp folder outside the repo.
+- Finding while verifying the troubleshooting table: an API-level failure
+  (tested with a deliberately invalid key) is NOT caught anywhere today -
+  it crashes the whole CLI with a raw Python traceback instead of a clean
+  message, unlike tool errors (file not found, etc.) which already
+  recover gracefully. Documented this honestly in the README as a known
+  limitation rather than glossing over it. Not fixed yet - flagged to the
+  user as the natural next improvement (wrap the `AnthropicClient.send()`
+  call in `cli.py`/`AgentLoop` with a narrow except for the Anthropic SDK's
+  API error types, print a clean message, keep the REPL alive).
