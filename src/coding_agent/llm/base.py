@@ -12,6 +12,20 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class LLMError(RuntimeError):
+    """Raised when the model can't be reached or refuses a request.
+
+    Covers things outside our control: a wrong/expired API key, no
+    network connection, rate limits, or the provider's servers being
+    down - as opposed to a bug in our own code. This is a recoverable
+    error, the same category as a failed tool call: the CLI catches it,
+    shows the user one clean line, and keeps the session running instead
+    of crashing. Each LLMClient implementation is responsible for
+    translating its provider's own exception types into this one, so
+    callers never need to know which provider they're talking to.
+    """
+
+
 @dataclass(frozen=True)
 class ToolCall:
     """One tool invocation the model is requesting."""
@@ -53,5 +67,8 @@ class LLMClient(ABC):
         (here, Anthropic's Messages API) since that's what needs to be
         replayed back on every turn - we don't invent our own format only
         to translate it back and forth for no benefit.
+
+        Raises LLMError if the model can't be reached or rejects the
+        request (bad key, rate limit, network issue, server error, ...).
         """
         raise NotImplementedError

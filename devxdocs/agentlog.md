@@ -93,3 +93,50 @@ save/resume, streaming output, grep/glob search tools, automated tests.
   user as the natural next improvement (wrap the `AnthropicClient.send()`
   call in `cli.py`/`AgentLoop` with a narrow except for the Anthropic SDK's
   API error types, print a clean message, keep the REPL alive).
+
+---
+
+## [2026-07-25] Fixed: API errors no longer crash the CLI
+
+User asked to fix the gap logged above. Extended the existing "recover
+gracefully" convention (previously only for tool errors) to cover
+LLM/API errors too:
+
+- Added `LLMError` to `llm/base.py` - a provider-agnostic exception.
+  `LLMClient.send()`'s docstring now documents that it can raise this.
+- `anthropic_client.py` now catches `anthropic.APIError` (the SDK's base
+  class covering auth errors, rate limits, connection issues, timeouts,
+  bad requests, and server errors - verified the exact class hierarchy
+  by inspecting the installed SDK rather than guessing) around the
+  `messages.create()` call, and re-raises as `LLMError` with a short,
+  clean, human-readable message. Wrote a `_describe()` helper that pulls
+  the actual reason out of the error's `.body` dict (e.g.
+  `"invalid x-api-key"`) instead of surfacing the SDK's full raw message
+  (which includes request IDs and nested dicts - noise for an end user).
+- `cli.py` now catches `LLMError` around `agent.run_turn(...)`, prints
+  one `error> ...` line, and `continue`s the input loop instead of
+  letting the exception kill the whole program.
+- `AgentLoop` itself needed no change - `LLMError` just propagates up
+  through it naturally, same as before, and `cli.py` (the I/O boundary)
+  is where it gets caught, consistent with how `MissingConfigError` is
+  already handled there.
+
+Before writing the rollback logic I assumed I'd need (removing the
+user's message from history on failure so a retry doesn't leave two
+consecutive `role: user` messages), I actually tested it against the
+real API first: consecutive user-role messages are accepted fine, so no
+rollback needed - kept the fix minimal instead of over-engineering it.
+
+Verified manually:
+1. Bad key -> clean `error> Claude API returned an error (401): invalid
+   x-api-key` line, session stays open, tried again immediately without
+   restarting.
+2. Valid key, no tools -> still answers normally.
+3. Valid key, with tools (write_file + read_file) -> still works
+   end-to-end, confirming the response-parsing path wasn't broken by
+   adding the try/except around it.
+
+Updated README.md's troubleshooting table and "reading the screen"
+section to describe the new `error>` line instead of the old
+"crashes the session" behavior. Updated AGENTS.md's conventions section
+and module map to mention `LLMError` alongside the other exception types.

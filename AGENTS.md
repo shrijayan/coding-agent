@@ -51,7 +51,7 @@ src/coding_agent/
 │   ├── conversation.py     # message history, in the Anthropic wire format
 │   └── loop.py             # AgentLoop - the orchestrator described above
 ├── llm/
-│   ├── base.py             # LLMClient interface + LLMResponse/ToolCall (provider-agnostic)
+│   ├── base.py             # LLMClient interface + LLMResponse/ToolCall/LLMError (provider-agnostic)
 │   └── anthropic_client.py # concrete LLMClient that calls the Anthropic Messages API
 └── tools/
     ├── base.py             # Tool interface + ToolResult
@@ -65,13 +65,18 @@ src/coding_agent/
 
 ## Conventions (please follow these when changing code)
 
-- **Fail fast on configuration, recover gracefully on tool errors.**
+- **Fail fast on configuration, recover gracefully on runtime errors.**
   Missing/invalid env vars raise `MissingConfigError` immediately at
   startup (see `config.py`) - never add a silent fallback default.
   A tool failing at runtime (file not found, bad command, ...) must
   **not** crash the program - catch it and return `ToolResult.error(...)`
   so the model sees the error as text and can adjust, the same way a
-  human developer reacts to a failed command.
+  human developer reacts to a failed command. The same applies to the
+  LLM call itself: `LLMClient` implementations translate their
+  provider's exceptions into `LLMError` (see `llm/base.py`), which the
+  CLI catches, shows as one clean `error>` line, and keeps the session
+  running - a bad key or a rate limit shouldn't kill the whole program
+  any more than a missing file should.
 - **No hardcoded config values.** Anything that could reasonably change
   per environment (model name, token limits, timeouts, iteration caps)
   lives in `.env` / `Config`, injected into constructors - never a bare

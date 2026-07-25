@@ -218,6 +218,9 @@ To leave, type `exit` (or press Ctrl+C).
 - `  [tool] name({...})` - the agent telling you exactly what it's doing
   right now (which file, which command) before it does it
 - `agent>` - its final answer to you, after it's done acting
+- `error>` - something went wrong reaching Claude (see
+  [troubleshooting](#7-if-something-goes-wrong)) - the session stays
+  open, so you can just try again
 
 ---
 
@@ -241,18 +244,19 @@ All settings live in your `.env` file (created in Step 5).
 |---|---|---|
 | `Configuration error: Missing required environment variable 'X'` | Your `.env` file is missing, or you skipped a line | Re-run `cp .env.example .env` and make sure every line has a value |
 | `command not found: uv` (or similar, wording differs by terminal) | `uv` isn't installed yet, or your terminal hasn't picked it up | Re-run the install command from Step 1, then fully close and reopen your terminal |
-| A long red error ending in `AuthenticationError` / `invalid x-api-key`, and the program exits back to your terminal | Your API key is wrong, incomplete, or has no billing enabled | Re-copy the full key into `.env`, confirm billing is set up at console.anthropic.com, then run `uv run coding-agent` again |
+| `error> Claude API returned an error (401): invalid x-api-key` | Your API key is wrong, incomplete, or has no billing enabled | Fix `ANTHROPIC_API_KEY` in `.env`, confirm billing is set up at console.anthropic.com, then just try your request again - no need to restart |
+| `error> Claude API returned an error (429): ...` | You've hit a rate limit (too many requests too quickly) | Wait a few seconds and try again |
 | It pauses for a while, then errors about a timeout | A command took longer than `AGENT_BASH_TIMEOUT_SECONDS` | Raise that number in `.env` |
 | `Stopped after N tool-use round-trips...` | The task needed more steps than `AGENT_MAX_ITERATIONS` allows | Raise that number in `.env`, or split your request into smaller asks |
 
 Still stuck? Copy the exact error message - that's the fastest way for
 anyone helping you to diagnose it.
 
-> **Current limitation:** any problem talking to Claude (bad key, no
-> internet, rate limit, etc.) currently ends the session rather than
-> showing a clean message and letting you keep going - you'll just need
-> to run `uv run coding-agent` again after fixing the cause. A friendlier
-> version of this is a natural next improvement.
+Any line starting with `error>` means something went wrong talking to
+Claude (bad key, no internet, rate limit, Anthropic's servers being
+temporarily down, ...) - it's shown as a clean one-line message and the
+session stays open, so you can just fix the cause and try again without
+restarting.
 
 ---
 

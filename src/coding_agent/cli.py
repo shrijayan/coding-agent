@@ -11,6 +11,7 @@ from typing import Any
 from coding_agent.agent.loop import AgentLoop
 from coding_agent.config import Config, MissingConfigError
 from coding_agent.llm.anthropic_client import AnthropicClient
+from coding_agent.llm.base import LLMError
 from coding_agent.system_prompt import SYSTEM_PROMPT
 from coding_agent.tools.bash import BashTool
 from coding_agent.tools.edit_file import EditFileTool
@@ -46,7 +47,12 @@ def run() -> None:
             print("Bye.")
             return
 
-        answer = agent.run_turn(user_input, on_tool_call=_print_tool_call)
+        try:
+            answer = agent.run_turn(user_input, on_tool_call=_print_tool_call)
+        except LLMError as error:
+            print(f"\nerror> {error}\n")
+            continue
+
         print(f"\nagent> {answer}\n")
 
 
