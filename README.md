@@ -210,7 +210,7 @@ uv run coding-agent
 You should see something like:
 
 ```
-Coding Agent ready (anthropic / claude-sonnet-5). Type 'exit' to quit.
+Coding Agent ready (anthropic / claude-sonnet-5, optimizations: none). Type 'exit' to quit.
 
 you>
 ```
@@ -242,6 +242,13 @@ they're safe to run in a throwaway folder:
 5. **Write and run code**
    `Write a Python script that prints the first 10 Fibonacci numbers, then run it and show me the output`
 
+6. **Check what it cost**
+   `/usage`
+   - Prints tokens used, estimated cost, and how many messages/tool
+     calls happened this session. This isn't a request to the AI at
+     all - it's a built-in command the terminal itself understands
+     (any input starting with `/`).
+
 To leave, type `exit` (or press Ctrl+C).
 
 **Reading the screen while it works:**
@@ -252,6 +259,13 @@ To leave, type `exit` (or press Ctrl+C).
 - `error>` - something went wrong reaching the model (see
   [troubleshooting](#7-if-something-goes-wrong)) - the session stays
   open, so you can just try again
+
+**If you're running this as part of a workshop on cost/performance
+optimizations:** start the agent with `uv run coding-agent --enable
+some-optimization-name` (see what's available in `AGENTS.md`'s "How to
+add a new optimization"). Run the same prompt with and without the
+flag, and compare the two `/usage` outputs - that side-by-side is the
+whole point.
 
 ---
 
