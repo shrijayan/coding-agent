@@ -2,9 +2,13 @@
 
 This is the piece everything else in the project exists to support. It
 knows nothing about Anthropic specifically (it depends on the LLMClient
-abstraction) and nothing about which tools exist (it depends on
-ToolRegistry). That's dependency inversion in practice: swap either one
-out and this file does not change.
+abstraction), nothing about which tools exist (it depends on
+ToolRegistry), and nothing about any optimization that's enabled (it
+depends on HistoryPolicy, and just calls whichever LLMClient it was
+handed - a caching/routing wrapper looks identical to it). That's
+dependency inversion in practice: swap any of them out and this file
+does not change - which is exactly what lets every workshop
+optimization plug in without touching this file.
 """
 
 from collections.abc import Callable
@@ -12,6 +16,7 @@ from collections.abc import Callable
 from coding_agent.agent.conversation import Conversation
 from coding_agent.llm.base import LLMClient
 from coding_agent.metrics.usage import UsageTracker
+from coding_agent.optimizations.history_policy import HistoryPolicy
 from coding_agent.tools.registry import ToolRegistry
 
 # Called as on_tool_call(tool_name, tool_input) right before each tool runs,
@@ -39,12 +44,14 @@ class AgentLoop:
         system_prompt: str,
         max_iterations: int,
         usage_tracker: UsageTracker,
+        history_policy: HistoryPolicy,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
         self._system_prompt = system_prompt
         self._max_iterations = max_iterations
         self._usage_tracker = usage_tracker
+        self._history_policy = history_policy
         self.conversation = Conversation()
 
     def run_turn(
@@ -62,9 +69,10 @@ class AgentLoop:
         self._usage_tracker.record_user_message()
 
         for _ in range(self._max_iterations):
+            messages_to_send = self._history_policy.prepare(self.conversation.messages)
             response = self._llm_client.send(
                 system=self._system_prompt,
-                messages=self.conversation.messages,
+                messages=messages_to_send,
                 tools=self._tool_registry.definitions(),
             )
             self._usage_tracker.record_llm_call(response.usage)
