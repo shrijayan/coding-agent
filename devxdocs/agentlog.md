@@ -254,3 +254,137 @@ this up next: get a key at openrouter.ai/keys, set
 `AGENT_PROVIDER=openrouter` + `OPENROUTER_API_KEY` +
 `AGENT_MODEL=anthropic/claude-sonnet-5` (or any model slug) in `.env`,
 and run through the same demo prompts from the README to confirm.
+
+---
+
+## [2026-07-27] Workshop context established + token/cost tracking +
+## optimization extension-point scaffolding
+
+This session's real news: this repo is the shared **Base Agent for a
+workshop on agent cost/performance optimization** (user, "Krishna", and
+"KP" each building one optimization on top of it - conversation
+summary + MCP/tool-calling comparison for the user, caching + model
+routing for Krishna, observability + context-window-optimization +
+agent-loop-prevention for KP, a couple of pieces still unassigned). The
+workshop narrative: run the same prompt, flip an optimization on,
+rerun, and show token/cost savings *alongside* a performance/correctness
+check - not cost savings in isolation, since a cheaper-but-worse agent
+isn't actually an improvement. Captured in AGENTS.md's "What this is"
+now so this context survives across sessions/contributors, not just in
+chat history.
+
+Extensive back-and-forth on **why SWE-bench matters and how a
+benchmark should relate to interactive usage** - worth preserving the
+conclusion since it shapes the still-unbuilt benchmark runner:
+- SWE-bench (or a subset) is the *performance ruler* - it has real
+  hidden tests, so "resolved 4/5 before, 4/5 after, 40% fewer tokens" is
+  checkable, unlike an arbitrary user prompt which has no ground truth.
+- Official SWE-bench harness needs Docker, ~120GB disk, 16GB+ RAM, and
+  ~60 environment images - fine for a one-time offline validation, wrong
+  for a live workshop loop. Decision: build our own lightweight,
+  Docker-free runner using real SWE-bench Lite instances (real issues,
+  real FAIL_TO_PASS/PASS_TO_PASS tests) - 3-5 hand-picked, pre-verified,
+  low-dependency instances, not a general "any instance" loader. NOT
+  YET BUILT this session - was going to be next, then the user redirected
+  to token/cost tracking + AGENTS.md documentation first (see below).
+- Benchmark tasks and interactive `/usage` sessions are **deliberately
+  decoupled**, not one blended command: the benchmark must run a FIXED
+  prompt every time (otherwise a cost difference could just mean the
+  task changed, not that the optimization helped) - so it can never
+  depend on whatever a user happens to type interactively. `/usage`
+  (this session's real tokens/cost) and a future benchmark report
+  (fixed tasks, pass-rate + tokens/cost together) are two separate
+  tools for two separate jobs, not one.
+
+**Built this session (in commit order - see individual commit messages
+for full detail):**
+
+1. `metrics/usage.py` + `metrics/pricing.py` + `metrics/pricing.json` -
+   real token counts (never estimated) from every model call, turned
+   into a cost estimate via a hand-maintained pricing file. Fails fast
+   at startup if the configured model has no price entry (user's
+   explicit call: hardcode prices in a plain file rather than build a
+   live OpenRouter pricing lookup - not worth the complexity for a
+   workshop with a small, known set of models).
+2. `commands/` (SlashCommand + SlashCommandRegistry, mirrors
+   Tool/ToolRegistry) + `/usage` - prints tokens, cost, and call counts
+   for the session. Verified cost math by hand against real numbers
+   twice ($0.0029 and $0.0095) - both matched exactly.
+3. **Optimization extension-point scaffolding** (`optimizations/`
+   package + `cli_args.py`), built specifically because the user wanted
+   AGENTS.md to guide colleagues' own coding agents toward building
+   their optimization *without* it being explained to them verbally -
+   which meant the extension point had to actually exist first, not
+   just be planned:
+   - `OptimizationBundle` (3 optional fields: `history_policy`,
+     `wrap_llm_client`, `system_prompt_suffix`) covers the 3 kinds of
+     changes an optimization can make, matching the 9 workshop
+     optimization areas from the spreadsheet.
+   - `HistoryPolicy` interface + `DefaultHistoryPolicy` (send everything
+     - today's behavior, now expressed as the default of a swappable
+     interface). `AgentLoop` now routes history through
+     `policy.prepare()` before every model call.
+   - `OptimizationRegistry` (mirrors ToolRegistry) resolves `--enable`
+     names into a combined bundle; fails fast on unknown names.
+   - Bundle composition when multiple `--enable` values are given:
+     `wrap_llm_client` wrappers chain (order = first-enabled outermost),
+     `system_prompt_suffix` values concatenate, `history_policy` set by
+     two different optimizations at once is a raised
+     `ConflictingOptimizationsError`, not a silent pick-a-winner.
+   - `cli_args.py`: `--enable NAME`, repeatable AND comma-separated
+     (both `--enable a,b` and `--enable a --enable b` work) - covers
+     "enable just one" and "enable a combination" equally naturally.
+   - `_AVAILABLE_OPTIMIZATIONS` in `cli.py` starts **empty** - this
+     session only built the pattern, not any real optimization yet.
+     Conversation summarization (next) will be the first real one.
+4. AGENTS.md: new "Token/cost tracking" section, and the real
+   deliverable - "How to add a new optimization" - a step-by-step guide
+   (which hook to pick, a code sketch for each of the 3 hooks, how to
+   register, how to prove it with before/after `/usage`, how combining
+   optimizations behaves) written so it's usable standalone, the same
+   way "How to add a new tool" and "Adding a new LLM provider" already
+   were before this session.
+
+**Verified manually, each piece before moving to the next:**
+- Cost math by hand (twice, exact match) - see above.
+- Fail-fast on an unpriced model (`AGENT_MODEL=some-unpriced-model` ->
+  clean error, exit code 1) and on an unregistered `--enable` name
+  (same).
+- `/usage` at zero messages (no divide-by-zero/edge-case issue) and
+  after multi-tool-call turns.
+- Full regression after wiring `HistoryPolicy` into `AgentLoop`: a
+  5-tool-call chained request behaves identically to before, and the
+  startup banner/`/usage` correctly show "optimizations: none" with
+  nothing enabled.
+- `OptimizationBundle.merged_with` unit-tested directly (5 scenarios:
+  empty resolve, unknown name, wrapper composition order, prompt-suffix
+  concatenation, history_policy conflict) before wiring it into
+  anything else.
+- Re-ran the full README "first demo" flow (list -> create -> read ->
+  edit -> write+run -> `/usage`) as one real session end-to-end before
+  updating the README to match, same discipline as previous sessions -
+  every documented example in this repo has actually been run, not
+  guessed.
+
+**Committed in small increments this session** (per explicit user
+request) rather than one large commit at the end - see git log for the
+6 separate commits, each independently working and tested before the
+next began.
+
+**Immediate next steps, in the order the user wants them:**
+1. Benchmark runner (SWE-bench Lite subset, Docker-free) - still not
+   built; was next before the AGENTS.md ask took priority.
+2. Conversation summarization, as the first real
+   `_AVAILABLE_OPTIMIZATIONS` entry and reference implementation for
+   Krishna/KP to copy - validated against the benchmark runner once (1)
+   exists, per the user's explicit reasoning: prove the pattern with
+   real before/after numbers, not just working code.
+3. Function calling/MCP comparison (user's second task, after
+   summarization) - clarified this session: NOT "which one wins," but
+   building an MCP-server version of one existing capability (e.g. file
+   ops, which has an official reference MCP server to compare
+   apples-to-apples against; or a real-world example like Jira) plus
+   MCP *client* support (which the agent doesn't have at all today),
+   run the same task both ways, and hand attendees a repeatable way to
+   assess which approach fits their own situation - not a blanket
+   verdict.
