@@ -52,12 +52,13 @@ together. Read that first if you want to understand the whole system.
 src/coding_agent/
 ├── __init__.py           # exposes main() - the package's only entry point
 ├── cli.py                 # REPL: reads input, wires everything together, prints output
-├── cli_args.py             # parses --enable flags
+├── cli_args.py             # parses --enable and --benchmark flags
 ├── config.py               # loads + validates env vars (fail-fast, no hidden defaults)
 ├── system_prompt.py         # the agent's system prompt text
 ├── agent/
 │   ├── conversation.py     # message history, in our own provider-agnostic format
-│   └── loop.py             # AgentLoop - the orchestrator described above
+│   ├── loop.py             # AgentLoop - the orchestrator described above
+│   └── factory.py           # build_agent() - assembles an AgentLoop from Config + optimizations
 ├── llm/
 │   ├── base.py             # LLMClient interface + LLMResponse/LLMError (provider-agnostic)
 │   ├── messages.py         # Message/TextPart/ToolUsePart/ToolResultPart - the neutral conversation format
@@ -75,7 +76,14 @@ src/coding_agent/
 ├── optimizations/
 │   ├── bundle.py             # OptimizationBundle - what one optimization changes, + merge logic
 │   ├── registry.py            # OptimizationRegistry - resolves --enable names into a bundle
-│   └── history_policy.py       # HistoryPolicy interface + DefaultHistoryPolicy (send everything)
+│   ├── available.py            # AVAILABLE_OPTIMIZATIONS - the one registration point (cli.py + benchmark share it)
+│   └── history_policy.py        # HistoryPolicy interface + DefaultHistoryPolicy (send everything)
+├── benchmark/
+│   ├── tasks.py              # 3 hand-verified SWE-bench Lite tasks (BenchmarkTask + TASKS)
+│   ├── data/<instance_id>/    # each task's problem statement, test patch, FAIL_TO_PASS/PASS_TO_PASS
+│   ├── sandbox.py             # Docker-free repo checkout + pinned venv + test patch application
+│   ├── runner.py               # runs one task through a fresh AgentLoop, checks pass/fail
+│   └── report.py                # runs every task, prints per-task + aggregate summary
 └── tools/
     ├── base.py             # Tool interface + ToolResult
     ├── registry.py          # ToolRegistry - looks up and runs tools by name
@@ -144,7 +152,7 @@ This is the most common change you'll make. Steps:
    - Write `description` for the model, not for a human reader - it's
      part of the prompt and directly affects whether Claude uses the
      tool correctly.
-2. Register it in `cli.py`'s `_build_agent()`, in the `tools=[...]` list.
+2. Register it in `agent/factory.py`'s `build_agent()`, in the `tools=[...]` list.
 3. If the tool needs any configurable value (a timeout, a size limit,
    ...), add it to `.env.example` and `Config` first, then pass it into
    your tool's constructor - don't hardcode it.
@@ -281,17 +289,17 @@ project.
 
 ### Step 3: register it
 
-One line in `cli.py`'s `_AVAILABLE_OPTIMIZATIONS` dict:
+One line in `optimizations/available.py`'s `AVAILABLE_OPTIMIZATIONS` dict:
 
 ```python
-_AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
+AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
     "your-optimization-name": your_optimization.build,
 }
 ```
 
-That's the only place that needs to change - `AgentLoop` and the rest
-of `cli.py` already work with whatever bundle comes out of the
-registry, unchanged.
+That's the only place that needs to change - `AgentLoop`, `cli.py`, and
+the benchmark runner all already work with whatever bundle comes out of
+the registry, unchanged.
 
 ### Step 4: prove it, don't just claim it
 
@@ -301,6 +309,9 @@ registry, unchanged.
    `/usage` output between the two runs - turns, tokens, and cost. That
    before/after comparison is the actual deliverable for the workshop,
    not just working code.
+3. For a more rigorous check that also catches correctness regressions
+   (not just cost), run the benchmark suite with and without your flag
+   - see "Benchmark" below.
 
 ### Combining optimizations
 
@@ -313,6 +324,61 @@ one owner at a time - if two enabled optimizations both set one,
 winning. If your optimization and someone else's both need to control
 history, that's a real design conversation to have, not something to
 resolve by picking whichever runs last.
+
+## Benchmark
+
+`uv run coding-agent --benchmark` (optionally combined with `--enable`)
+runs a fixed suite of real coding tasks and prints a report: how many
+resolved, total tokens, total cost, wall-clock time. This is the
+rigorous counterpart to eyeballing `/usage` before/after - it checks
+that an optimization didn't quietly break correctness while saving
+tokens, using a task the model can't "cheat" on the way it might on an
+arbitrary prompt (see the next paragraph for why the task has to be fixed).
+
+**The tasks never change, on purpose.** Each is a real GitHub issue from
+[SWE-bench Lite](https://www.swebench.com) with a real hidden test that
+only passes once the issue is genuinely fixed (`benchmark/tasks.py`,
+data in `benchmark/data/<instance_id>/`). The prompt is always this same
+fixed `problem_statement`, never whatever a user types interactively -
+if the task varied between runs, a token/cost difference could just
+mean the task changed, not that an optimization helped. Holding the
+task constant and varying only the optimization is what makes "40% fewer
+tokens with X enabled" a comparison you can trust.
+
+**No Docker.** Unlike the official SWE-bench harness (~120GB disk,
+16GB+ RAM, ~60 environment images - see
+[Docker Setup](https://www.swebench.com/SWE-bench/guides/docker_setup/)),
+`benchmark/sandbox.py` clones each task's repo into a plain `uv`-managed
+virtual environment with the exact Python version and pinned
+dependencies that instance needs. This trades some environment fidelity
+for a fast, live-workshop-friendly loop.
+
+**Only 3 tasks are curated** (of SWE-bench Lite's 534), each
+individually verified end-to-end before being added - the environment
+installs cleanly, the FAIL_TO_PASS tests genuinely fail before a fix and
+genuinely pass after the real one - rather than a general "run any
+instance" loader. If you want to add a 4th: pick a lightweight repo
+(pure Python, no C-extension build - flask/requests/pytest/pylint style,
+not sklearn/matplotlib/astropy), verify it the same manual way first
+(clone, checkout, install, apply test patch, confirm fail-then-pass),
+*then* add it to `TASKS` - don't add an instance you haven't personally
+watched go from failing to passing.
+
+**Two non-obvious things this runner had to handle**, in case you're
+debugging a task that won't resolve even though the fix looks right -
+see `benchmark/runner.py`'s docstrings for the full reasoning:
+- The raw GitHub issue text is often phrased as a question, not an
+  instruction - passed to the agent unwrapped, it will just answer
+  conversationally instead of editing code. `runner.py` wraps it in an
+  explicit "resolve this issue by editing the code" framing.
+- Hitting `AGENT_MAX_ITERATIONS` doesn't mean the task failed - the
+  agent's edits already happened on disk regardless of whether it
+  converged to a final answer, so the runner always checks the tests
+  afterward rather than assuming failure. (Confirmed necessary in
+  practice, not theoretical: a run hit the iteration limit while
+  re-verifying an already-correct fix, and was still correctly counted
+  as resolved.)
+
 
 ## Logging changes
 
