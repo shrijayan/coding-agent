@@ -21,6 +21,7 @@ import openai
 
 from coding_agent.llm.base import LLMClient, LLMError, LLMResponse
 from coding_agent.llm.messages import Message, TextPart, ToolResultPart, ToolUsePart
+from coding_agent.metrics.usage import Usage
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -69,7 +70,17 @@ class OpenRouterClient(LLMClient):
             text=message.content or "",
             tool_calls=tool_calls,
             wants_tool_use=bool(tool_calls),
+            usage=_extract_usage(response.usage),
         )
+
+
+def _extract_usage(usage: Any) -> Usage:
+    """Some models proxied through OpenRouter occasionally omit usage data
+    entirely - treat that as zero rather than crashing, since a missing
+    number is a data-completeness gap, not something worth failing over."""
+    if usage is None:
+        return Usage()
+    return Usage(input_tokens=usage.prompt_tokens, output_tokens=usage.completion_tokens)
 
 
 def _to_openai_tool(tool: dict[str, Any]) -> dict[str, Any]:

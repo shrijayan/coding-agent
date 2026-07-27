@@ -12,6 +12,7 @@ import anthropic
 
 from coding_agent.llm.base import LLMClient, LLMError, LLMResponse
 from coding_agent.llm.messages import Message, TextPart, ToolResultPart, ToolUsePart
+from coding_agent.metrics.usage import Usage
 
 
 class AnthropicClient(LLMClient):
@@ -55,6 +56,10 @@ class AnthropicClient(LLMClient):
             text="\n".join(text_parts),
             tool_calls=tool_calls,
             wants_tool_use=(response.stop_reason == "tool_use"),
+            usage=Usage(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            ),
         )
 
 

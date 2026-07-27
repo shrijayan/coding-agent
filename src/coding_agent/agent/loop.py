@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from coding_agent.agent.conversation import Conversation
 from coding_agent.llm.base import LLMClient
+from coding_agent.metrics.usage import UsageTracker
 from coding_agent.tools.registry import ToolRegistry
 
 # Called as on_tool_call(tool_name, tool_input) right before each tool runs,
@@ -37,11 +38,13 @@ class AgentLoop:
         tool_registry: ToolRegistry,
         system_prompt: str,
         max_iterations: int,
+        usage_tracker: UsageTracker,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
         self._system_prompt = system_prompt
         self._max_iterations = max_iterations
+        self._usage_tracker = usage_tracker
         self.conversation = Conversation()
 
     def run_turn(
@@ -56,6 +59,7 @@ class AgentLoop:
         again - until it responds with plain text instead of a tool call.
         """
         self.conversation.add_user_text(user_input)
+        self._usage_tracker.record_user_message()
 
         for _ in range(self._max_iterations):
             response = self._llm_client.send(
@@ -63,6 +67,7 @@ class AgentLoop:
                 messages=self.conversation.messages,
                 tools=self._tool_registry.definitions(),
             )
+            self._usage_tracker.record_llm_call(response.usage)
             self.conversation.add_assistant_turn(response.text, response.tool_calls)
 
             if not response.wants_tool_use:
@@ -73,6 +78,7 @@ class AgentLoop:
                 if on_tool_call is not None:
                     on_tool_call(call.name, call.input)
                 result = self._tool_registry.execute(call.name, call.input)
+                self._usage_tracker.record_tool_call()
                 results.append((call.id, result))
 
             self.conversation.add_tool_results(results)

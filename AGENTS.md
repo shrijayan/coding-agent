@@ -10,6 +10,15 @@ backed by an LLM (Claude directly, or any model via OpenRouter), with a
 small set of tools (read/write/edit files, run bash, list files) that let
 the model actually act on this machine instead of just talking about it.
 
+This project doubles as the **Base Agent for a workshop on agent cost/
+performance optimization**. The idea: everyone builds their own
+optimization (conversation summarization, caching, model routing,
+context window optimization, ...) on top of this same base, using its
+built-in token/cost tracking (`/usage`, see below) to prove - not just
+claim - that their optimization actually helps, without checking
+whether the reference optimization pattern still applies before
+copying it (see "Adding a new optimization" once that section exists).
+
 ## Quick start
 
 ```bash
@@ -55,6 +64,14 @@ src/coding_agent/
 │   ├── factory.py          # picks which LLMClient to build, based on Config.provider
 │   ├── anthropic_client.py # concrete LLMClient that calls the Anthropic Messages API
 │   └── openrouter_client.py # concrete LLMClient that calls OpenRouter (OpenAI-compatible API)
+├── metrics/
+│   ├── usage.py             # Usage (token counts) + UsageTracker (accumulates across a session)
+│   ├── pricing.py            # PricingTable - cost = tokens x pricing.json, fail-fast if a model is unpriced
+│   └── pricing.json           # hand-maintained {model: {input_per_million_usd, output_per_million_usd}}
+├── commands/
+│   ├── base.py              # SlashCommand interface (mirrors tools/base.py's Tool)
+│   ├── registry.py           # SlashCommandRegistry - looks up and runs commands by name
+│   └── usage_command.py       # /usage - prints tokens, cost, call counts for the session
 └── tools/
     ├── base.py             # Tool interface + ToolResult
     ├── registry.py          # ToolRegistry - looks up and runs tools by name
@@ -98,6 +115,18 @@ src/coding_agent/
   If you add a provider whose wire format doesn't fit this neutral
   shape, extend `llm/messages.py` deliberately - don't leak a
   provider-specific dict shape back out into `Conversation` or `AgentLoop`.
+- **Never estimate tokens or cost.** `Usage` is only ever populated from
+  a provider's real API response (see `llm/base.py`'s `LLMResponse.usage`
+  docstring). Every optimization built on this base gets judged by
+  `/usage` numbers - a guessed token count would make every comparison
+  in the workshop meaningless, so this is a hard rule, not a style
+  preference.
+- **Slash commands mirror tools.** `SlashCommand`/`SlashCommandRegistry`
+  (`commands/`) are the exact same "registry of named, pluggable things"
+  shape as `Tool`/`ToolRegistry` (`tools/`), applied to REPL-level
+  commands like `/usage` instead of model-invoked actions. If a new kind
+  of pluggable thing needs to be added later (e.g. an optimization
+  registry), reach for this same shape rather than inventing a new one.
 
 ## How to add a new tool
 
@@ -140,7 +169,10 @@ recipe, so a third is additive, not a rewrite:
      (the `anthropic` and `openai` SDKs looked identical on the surface
      but shaped their error `.body` differently - verified, not assumed).
    - Parse the response back into `LLMResponse(text, tool_calls,
-     wants_tool_use)`.
+     wants_tool_use, usage)`. `usage` must come from the provider's real
+     response (e.g. Anthropic's `response.usage.input_tokens`, OpenAI-
+     style APIs' `response.usage.prompt_tokens`) - never estimated, since
+     every cost comparison in this project depends on it being real.
 2. Add the provider to `_PROVIDER_API_KEY_ENV_VARS` in `config.py` and
    `_BUILDERS` in `llm/factory.py`.
 3. Add its API key variable and an example model string to `.env.example`.

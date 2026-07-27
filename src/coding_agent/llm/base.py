@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from coding_agent.llm.messages import Message, ToolUsePart
+from coding_agent.metrics.usage import Usage
 
 
 class LLMError(RuntimeError):
@@ -43,6 +44,10 @@ class LLMResponse:
     tool_calls list) - that difference is resolved by the client, so
     everything downstream only ever sees this one plain boolean.
     """
+    usage: Usage
+    """Real token counts for this specific call, as reported by the
+    provider - never estimated, since a guessed number would quietly
+    make every cost comparison in this project meaningless."""
 
 
 class LLMClient(ABC):

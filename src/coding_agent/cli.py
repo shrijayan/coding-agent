@@ -1,17 +1,21 @@
 """The REPL: reads user input, runs one agent turn, prints the answer.
 
 This file's only job is wiring things together and talking to the
-terminal. All the actual logic lives in config/, llm/, tools/, and
-agent/ - this stays thin on purpose so it's obvious where to look for
-behavior versus where to look for I/O.
+terminal. All the actual logic lives in config/, llm/, tools/, agent/,
+metrics/, and commands/ - this stays thin on purpose so it's obvious
+where to look for behavior versus where to look for I/O.
 """
 
 from typing import Any
 
 from coding_agent.agent.loop import AgentLoop
+from coding_agent.commands.registry import SlashCommandRegistry
+from coding_agent.commands.usage_command import UsageCommand
 from coding_agent.config import Config, MissingConfigError
 from coding_agent.llm.base import LLMError
 from coding_agent.llm.factory import build_llm_client
+from coding_agent.metrics.pricing import MissingPricingError, PricingTable
+from coding_agent.metrics.usage import UsageTracker
 from coding_agent.system_prompt import SYSTEM_PROMPT
 from coding_agent.tools.bash import BashTool
 from coding_agent.tools.edit_file import EditFileTool
@@ -31,7 +35,25 @@ def run() -> None:
         print(f"Configuration error: {error}")
         raise SystemExit(1) from error
 
-    agent = _build_agent(config)
+    try:
+        pricing = PricingTable.load()
+        pricing.require(config.model)
+    except MissingPricingError as error:
+        print(f"Configuration error: {error}")
+        raise SystemExit(1) from error
+
+    usage_tracker = UsageTracker()
+    agent = _build_agent(config, usage_tracker)
+    command_registry = SlashCommandRegistry(
+        commands=[
+            UsageCommand(
+                tracker=usage_tracker,
+                pricing=pricing,
+                config=config,
+                enabled_optimizations=[],
+            ),
+        ]
+    )
 
     print(f"Coding Agent ready ({config.provider} / {config.model}). Type 'exit' to quit.\n")
     while True:
@@ -47,6 +69,10 @@ def run() -> None:
             print("Bye.")
             return
 
+        if command_registry.is_command(user_input):
+            print(f"\n{command_registry.run(user_input)}\n")
+            continue
+
         try:
             answer = agent.run_turn(user_input, on_tool_call=_print_tool_call)
         except LLMError as error:
@@ -56,7 +82,7 @@ def run() -> None:
         print(f"\nagent> {answer}\n")
 
 
-def _build_agent(config: Config) -> AgentLoop:
+def _build_agent(config: Config, usage_tracker: UsageTracker) -> AgentLoop:
     llm_client = build_llm_client(config)
     tool_registry = ToolRegistry(
         tools=[
@@ -72,6 +98,7 @@ def _build_agent(config: Config) -> AgentLoop:
         tool_registry=tool_registry,
         system_prompt=SYSTEM_PROMPT,
         max_iterations=config.max_iterations,
+        usage_tracker=usage_tracker,
     )
 
 
