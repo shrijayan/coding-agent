@@ -16,7 +16,7 @@ from collections.abc import Callable
 from coding_agent.agent.conversation import Conversation
 from coding_agent.llm.base import LLMClient
 from coding_agent.metrics.usage import UsageTracker
-from coding_agent.optimizations.history_policy import HistoryPolicy
+from coding_agent.optimizations.history_policy import HistoryContext, HistoryPolicy
 from coding_agent.tools.registry import ToolRegistry
 
 # Called as on_tool_call(tool_name, tool_input) right before each tool runs,
@@ -67,9 +67,15 @@ class AgentLoop:
         """
         self.conversation.add_user_text(user_input)
         self._usage_tracker.record_user_message()
+        history_context = HistoryContext(
+            llm_client=self._llm_client,
+            usage_tracker=self._usage_tracker,
+        )
 
         for _ in range(self._max_iterations):
-            messages_to_send = self._history_policy.prepare(self.conversation.messages)
+            messages_to_send = self._history_policy.prepare(
+                self.conversation.messages, history_context
+            )
             response = self._llm_client.send(
                 system=self._system_prompt,
                 messages=messages_to_send,

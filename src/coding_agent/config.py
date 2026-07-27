@@ -36,6 +36,8 @@ class Config:
     max_tokens: int
     max_iterations: int
     bash_timeout_seconds: int
+    summary_threshold_messages: int
+    summary_keep_recent_messages: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -54,6 +56,8 @@ class Config:
             max_tokens=_require_int("AGENT_MAX_TOKENS"),
             max_iterations=_require_int("AGENT_MAX_ITERATIONS"),
             bash_timeout_seconds=_require_int("AGENT_BASH_TIMEOUT_SECONDS"),
+            summary_threshold_messages=_require_int("AGENT_SUMMARY_THRESHOLD_MESSAGES"),
+            summary_keep_recent_messages=_require_int("AGENT_SUMMARY_KEEP_RECENT_MESSAGES"),
         )
 
 
