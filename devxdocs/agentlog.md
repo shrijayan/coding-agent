@@ -388,3 +388,134 @@ next began.
    run the same task both ways, and hand attendees a repeatable way to
    assess which approach fits their own situation - not a blanket
    verdict.
+
+---
+
+## [2026-07-28] Built the benchmark runner - real, working, Docker-free
+
+User asked "what next to build?" - per the priority agreed last session
+(metrics -> benchmark -> summarization, benchmark comes before the
+first real optimization so it can validate that optimization with real
+before/after numbers), this session built the benchmark runner. Also
+did a small prerequisite refactor first, and picked up one loose end
+(AGENTS.md's optimization guide needed to point at something real - see
+previous entry).
+
+**Prerequisite refactor** (agent/factory.py, optimizations/available.py):
+the benchmark runner needs to build an AgentLoop and resolve --enable
+exactly like the interactive CLI does. Pulled `_build_agent` out of
+cli.py into `agent/factory.py`'s `build_agent()`, and moved
+`_AVAILABLE_OPTIMIZATIONS` out of cli.py into
+`optimizations/available.py`'s `AVAILABLE_OPTIMIZATIONS` - both now
+shared by cli.py and benchmark/report.py instead of cli.py owning
+private copies. `cli_args.py`'s `parse_enabled_optimizations()` became
+`parse_args()`, returning a `CliArgs(enabled_optimizations, benchmark)`
+so `--benchmark` and `--enable` are parsed together. Verified: full
+regression (identical interactive behavior), `--help` output correct.
+
+**Picking real SWE-bench Lite instances, not guessing:**
+- Queried the dataset directly via HuggingFace's datasets-server REST
+  API (`datasets-server.huggingface.co/rows?dataset=...`) rather than
+  pulling in the full `datasets` package as a dependency for a handful
+  of rows.
+- SWE-bench Lite's 300 test-split instances are dominated by
+  django/sympy/matplotlib/sklearn (heavy scientific-computing repos with
+  C-extension builds). Deliberately picked from the lighter repos
+  instead - flask, requests, pylint, pytest - pure Python, no compiled
+  extensions, to keep the Docker-free approach viable.
+- Found the `swebench` PyPI package ships `swebench/harness/constants/
+  python.py` - hand-maintained, per-repo-version pip package pins
+  (SPECS_FLASK, SPECS_REQUESTS, SPECS_PYLINT, ...). Used **only this
+  data**, not any Docker/harness code from that package - pip-installed
+  it just to read the constants module as a data source.
+
+**Actually verified 3 candidate instances end-to-end before writing any
+task-runner code** (clone real repo, checkout base_commit, install pinned
+deps in a plain venv, apply test_patch, confirm FAIL_TO_PASS tests
+genuinely fail, apply the real gold patch, confirm they genuinely pass).
+This surfaced real environment problems no amount of reading the spec
+would have caught:
+- flask-4045 needed Python 3.9 specifically, not just pinned packages -
+  Python 3.12's stricter deprecation handling (`ast.Str` removal path)
+  broke test collection outright. Used `uv python install 3.9` +
+  `uv venv --python 3.9` to get an isolated old interpreter.
+- flask-4045's own pinned `blinker==1.4` has a SyntaxError on a *modern*
+  3.9 patch release (3.9.25) - an unescaped backslash in a docstring
+  that only became a hard error in later 3.9.x point releases than
+  existed when flask pinned it. Bumped to `blinker==1.6.2`.
+- `greenlet==1.1.0` (also in flask's own lockfile) fails to build from
+  source on this machine/Python combo - skipped it since it's unused by
+  the 2 target tests.
+- pylint-5859's `pytest-benchmark~=3.4` crashes on `pytest_configure`
+  against a modern `py` package (`AttributeError: module 'py' has no
+  attribute 'io'`) - not needed for the target test, disabled via
+  `-p no:benchmark`.
+- requests-3362 needed no extra pins at all beyond `pytest` - the
+  simplest of the three, confirming the "pick lightweight repos" choice
+  was right.
+
+Ended up with exactly 3 fully-verified tasks (not 5) - each verification
+took real, non-trivial effort, and 3 was the agreed lower bound. Task
+data (problem statement, test patch, FAIL_TO_PASS/PASS_TO_PASS) stored
+as plain files under `benchmark/data/<instance_id>/`, not inlined in
+`tasks.py`, to keep the Python logic readable.
+
+**Built `sandbox.py` / `runner.py` / `report.py`**, then ran the actual
+agent against a real task - and found two real bugs by doing that,
+not by inspection:
+
+1. **First run: zero tool calls, agent just answered conversationally.**
+   SWE-bench's `problem_statement` is the *raw* GitHub issue as
+   originally filed - often phrased as a question ("am I misunderstanding
+   something?"), not an instruction. Passed unwrapped, the agent
+   reasonably treated it as something to discuss, not fix. Fixed with an
+   explicit task-framing wrapper in `runner.py` (the issue text itself
+   stays untouched, for fidelity) - after the fix, the agent immediately
+   started exploring and editing.
+
+2. **Second issue: hitting AGENT_MAX_ITERATIONS was being treated as
+   automatic failure.** Original code: `except (LLMError,
+   AgentLoopSafetyLimitError): return resolved=False` - skipping the
+   test check entirely. But tool calls mutate the sandbox's files
+   immediately, regardless of whether the loop ever converges to a
+   final text answer - so an agent that made the *correct* fix and then
+   burned its remaining iterations re-verifying it (in one observed
+   case: with the wrong Python interpreter, since it forgot the sandbox
+   has its own `.venv`) would be wrongly counted as failed. Fixed to
+   only skip the test check for `LLMError` (genuinely unreachable
+   model); `AgentLoopSafetyLimitError` now still runs the tests. Proven
+   correct in the full run below, not just in theory: `psf__requests-3362`
+   hit the safety limit but was still correctly marked RESOLVED, because
+   the code on disk was actually right.
+
+**Verified with a full, real `uv run coding-agent --benchmark` run (no
+mocking, no shortcuts):**
+```
+Resolved: 2/3, 618,451 total tokens, $1.3578, 322.5s wall-clock
+[FAIL] pallets__flask-4045      tokens=240,768 cost=$0.5331 time=105.8s
+[PASS] psf__requests-3362       tokens=272,122 cost=$0.5927 time=157.0s
+[PASS] pylint-dev__pylint-5859  tokens=105,561 cost=$0.2320 time= 59.6s
+```
+flask-4045's failure was also legitimate, not a harness bug: the agent's
+fix only handled one of the two required behavior changes (blueprint
+name validation, but not the route-decorator endpoint check) - a
+genuine partial fix, correctly caught as not-fully-resolved. Also
+confirmed `--benchmark --enable does-not-exist` fails fast before any
+expensive sandbox setup runs (no registered optimizations yet).
+
+**Two commits hung mid-write this session** from literal backticks in
+the commit message being interpreted by zsh as command substitution
+(stripped a few inline-code-quoted words from one message before I
+caught it, then switched to writing the message to a temp file and
+using `git commit -F` for the rest - more reliable for multi-line
+messages with backticks/code references going forward).
+
+Updated AGENTS.md: new "Benchmark" section (why the tasks never change,
+why no Docker, the "add a 4th" policy, the two failure modes above),
+plus fixed two stale references to `cli.py` private helpers that moved
+during the factory/available.py refactor. Added a short README mention
+for workshop attendees.
+
+**Not yet done:** conversation summarization (the actual first
+`AVAILABLE_OPTIMIZATIONS` entry) - next per the agreed order, now
+unblocked since the benchmark exists to validate it against.
