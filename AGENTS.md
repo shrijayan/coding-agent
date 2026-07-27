@@ -15,9 +15,8 @@ performance optimization**. The idea: everyone builds their own
 optimization (conversation summarization, caching, model routing,
 context window optimization, ...) on top of this same base, using its
 built-in token/cost tracking (`/usage`, see below) to prove - not just
-claim - that their optimization actually helps, without checking
-whether the reference optimization pattern still applies before
-copying it (see "Adding a new optimization" once that section exists).
+claim - that their optimization actually helps. See "How to add a new
+optimization" below for the exact pattern every optimization plugs into.
 
 ## Quick start
 
@@ -53,6 +52,7 @@ together. Read that first if you want to understand the whole system.
 src/coding_agent/
 ├── __init__.py           # exposes main() - the package's only entry point
 ├── cli.py                 # REPL: reads input, wires everything together, prints output
+├── cli_args.py             # parses --enable flags
 ├── config.py               # loads + validates env vars (fail-fast, no hidden defaults)
 ├── system_prompt.py         # the agent's system prompt text
 ├── agent/
@@ -72,6 +72,10 @@ src/coding_agent/
 │   ├── base.py              # SlashCommand interface (mirrors tools/base.py's Tool)
 │   ├── registry.py           # SlashCommandRegistry - looks up and runs commands by name
 │   └── usage_command.py       # /usage - prints tokens, cost, call counts for the session
+├── optimizations/
+│   ├── bundle.py             # OptimizationBundle - what one optimization changes, + merge logic
+│   ├── registry.py            # OptimizationRegistry - resolves --enable names into a bundle
+│   └── history_policy.py       # HistoryPolicy interface + DefaultHistoryPolicy (send everything)
 └── tools/
     ├── base.py             # Tool interface + ToolResult
     ├── registry.py          # ToolRegistry - looks up and runs tools by name
@@ -179,6 +183,136 @@ recipe, so a third is additive, not a rewrite:
 4. Test manually: run with a deliberately invalid key first (confirms
    the whole plumbing reaches the real API and errors come back clean),
    then with a real key and a prompt that exercises every tool.
+
+## Token/cost tracking
+
+`metrics/usage.py`'s `UsageTracker` records real token counts (never
+estimated - see `LLMResponse.usage`'s docstring) after every model call,
+and `metrics/pricing.py`'s `PricingTable` turns those into a dollar
+estimate using `metrics/pricing.json` - a hand-maintained file, not
+Python constants, so adding a model you plan to use is a one-line data
+edit. If your model isn't in that file, the agent refuses to start
+(`MissingPricingError`) rather than silently showing `$0.00` - add an
+entry with `input_per_million_usd`/`output_per_million_usd` for the
+exact string you put in `AGENT_MODEL`.
+
+Type `/usage` in any session to see the running total for that session:
+turns, LLM calls, tool calls, tokens, cost, and which optimizations are
+currently enabled. This is the tool every optimization gets judged
+with - see the next section.
+
+## How to add a new optimization
+
+This project is the shared **Base Agent** for a workshop where several
+people each build one optimization (conversation summarization, caching,
+model routing, context window optimization, prompt optimization, output
+style control, inference parameters, ...) on top of it. Every
+optimization plugs in the same way, through `OptimizationBundle`
+(`optimizations/bundle.py`), regardless of who builds it or what it
+does - so this section should be enough on its own to build and wire up
+a new one.
+
+### Step 1: figure out which hook(s) you need
+
+An `OptimizationBundle` has three fields. Set only the one(s) relevant
+to what your optimization actually changes - most optimizations need
+exactly one:
+
+| Field | Set this if your optimization... | Examples |
+|---|---|---|
+| `history_policy` | changes what conversation history is sent to the model | conversation summarization, context window optimization |
+| `wrap_llm_client` | changes something about the model call itself | caching, model routing, inference parameters (top_p/top_k) |
+| `system_prompt_suffix` | is really just an instruction to the model | prompt optimization, output length/style control |
+
+### Step 2: implement it
+
+Create `src/coding_agent/optimizations/your_optimization.py`. Pick the
+pattern(s) that match Step 1:
+
+**If you set `history_policy`** - implement `HistoryPolicy`
+(`optimizations/history_policy.py`):
+
+```python
+from coding_agent.llm.messages import Message
+from coding_agent.optimizations.history_policy import HistoryPolicy
+
+class YourPolicy(HistoryPolicy):
+    def prepare(self, messages: list[Message]) -> list[Message]:
+        # Return what should actually be sent to the model this turn.
+        # AgentLoop's own record of the conversation is untouched no
+        # matter what you return here - only what gets sent is affected.
+        ...
+```
+
+**If you set `wrap_llm_client`** - `LLMClient` (`llm/base.py`) is
+already an interface, so wrapping it needs no new abstraction, just the
+Decorator pattern: a class that implements `LLMClient` and holds
+another `LLMClient` inside it:
+
+```python
+from coding_agent.llm.base import LLMClient, LLMResponse
+from coding_agent.llm.messages import Message
+
+class YourWrapper(LLMClient):
+    def __init__(self, inner: LLMClient) -> None:
+        self._inner = inner
+
+    def send(self, *, system: str, messages: list[Message], tools: list[dict]) -> LLMResponse:
+        # Do something before/instead of/after calling the real client:
+        return self._inner.send(system=system, messages=messages, tools=tools)
+```
+
+**If you set `system_prompt_suffix`** - just write the instruction text
+as a string; no class needed.
+
+Then add a small factory function in the same file:
+
+```python
+from coding_agent.optimizations.bundle import OptimizationBundle
+
+def build() -> OptimizationBundle:
+    return OptimizationBundle(history_policy=YourPolicy())  # or wrap_llm_client=..., etc.
+```
+
+If your optimization needs its own settings (a threshold, a cache TTL,
+...), add them to `.env.example` and `Config` first, then read them in
+`build()` - don't hardcode them, same rule as everywhere else in this
+project.
+
+### Step 3: register it
+
+One line in `cli.py`'s `_AVAILABLE_OPTIMIZATIONS` dict:
+
+```python
+_AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
+    "your-optimization-name": your_optimization.build,
+}
+```
+
+That's the only place that needs to change - `AgentLoop` and the rest
+of `cli.py` already work with whatever bundle comes out of the
+registry, unchanged.
+
+### Step 4: prove it, don't just claim it
+
+1. `uv run coding-agent --enable your-optimization-name` and confirm
+   the agent still behaves correctly on a few real prompts.
+2. Run the *same* prompt with and without your flag, and compare
+   `/usage` output between the two runs - turns, tokens, and cost. That
+   before/after comparison is the actual deliverable for the workshop,
+   not just working code.
+
+### Combining optimizations
+
+`--enable a,b` (or `--enable a --enable b`) combines both bundles
+automatically (`OptimizationBundle.merged_with`): `wrap_llm_client`
+wrappers chain (both take effect, first-enabled applied outermost),
+`system_prompt_suffix` values concatenate. `history_policy` has only
+one owner at a time - if two enabled optimizations both set one,
+`ConflictingOptimizationsError` is raised rather than one silently
+winning. If your optimization and someone else's both need to control
+history, that's a real design conversation to have, not something to
+resolve by picking whichever runs last.
 
 ## Logging changes
 
