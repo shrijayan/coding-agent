@@ -63,7 +63,7 @@ class AgentLoop:
                 messages=self.conversation.messages,
                 tools=self._tool_registry.definitions(),
             )
-            self.conversation.add_assistant_response(response.raw_content)
+            self.conversation.add_assistant_turn(response.text, response.tool_calls)
 
             if not response.wants_tool_use:
                 return response.text

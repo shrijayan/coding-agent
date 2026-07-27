@@ -6,15 +6,15 @@ Instructions for any human or AI agent working in this repository.
 
 A minimal coding agent (like Claude Code/OpenCode) built from scratch to
 understand how these tools work under the hood. It's a terminal chat loop
-backed by Claude, with a small set of tools (read/write/edit files, run
-bash, list files) that let the model actually act on this machine instead
-of just talking about it.
+backed by an LLM (Claude directly, or any model via OpenRouter), with a
+small set of tools (read/write/edit files, run bash, list files) that let
+the model actually act on this machine instead of just talking about it.
 
 ## Quick start
 
 ```bash
 uv sync                        # install dependencies into .venv
-cp .env.example .env           # then fill in ANTHROPIC_API_KEY at minimum
+cp .env.example .env           # set AGENT_PROVIDER + that provider's API key
 uv run coding-agent            # start the chat loop
 ```
 
@@ -27,14 +27,13 @@ If you add tests, run them with `uv run pytest`.
 
 1. User types a message -> `AgentLoop.run_turn()`.
 2. The loop sends the full conversation history + system prompt + tool
-   schemas to Claude via `LLMClient.send()`.
-3. Claude replies with either final text, or a request to call one or
-   more tools (`stop_reason == "tool_use"`).
+   schemas to the model via `LLMClient.send()`.
+3. The model replies with either final text, or a request to call one or
+   more tools (`LLMResponse.wants_tool_use`).
 4. If tools were requested, `ToolRegistry.execute()` runs each one for
-   real and the result goes back into the conversation as a `tool_result`
-   message.
-5. Repeat from step 2 until Claude replies with plain text (no more tool
-   calls) - that text is the final answer shown to the user.
+   real and the result goes back into the conversation as a tool result.
+5. Repeat from step 2 until the model replies with plain text (no more
+   tool calls) - that text is the final answer shown to the user.
 
 `AgentLoop` (src/coding_agent/agent/loop.py) is the file that ties this
 together. Read that first if you want to understand the whole system.
@@ -48,11 +47,14 @@ src/coding_agent/
 ├── config.py               # loads + validates env vars (fail-fast, no hidden defaults)
 ├── system_prompt.py         # the agent's system prompt text
 ├── agent/
-│   ├── conversation.py     # message history, in the Anthropic wire format
+│   ├── conversation.py     # message history, in our own provider-agnostic format
 │   └── loop.py             # AgentLoop - the orchestrator described above
 ├── llm/
-│   ├── base.py             # LLMClient interface + LLMResponse/ToolCall/LLMError (provider-agnostic)
-│   └── anthropic_client.py # concrete LLMClient that calls the Anthropic Messages API
+│   ├── base.py             # LLMClient interface + LLMResponse/LLMError (provider-agnostic)
+│   ├── messages.py         # Message/TextPart/ToolUsePart/ToolResultPart - the neutral conversation format
+│   ├── factory.py          # picks which LLMClient to build, based on Config.provider
+│   ├── anthropic_client.py # concrete LLMClient that calls the Anthropic Messages API
+│   └── openrouter_client.py # concrete LLMClient that calls OpenRouter (OpenAI-compatible API)
 └── tools/
     ├── base.py             # Tool interface + ToolResult
     ├── registry.py          # ToolRegistry - looks up and runs tools by name
@@ -82,12 +84,20 @@ src/coding_agent/
   lives in `.env` / `Config`, injected into constructors - never a bare
   constant buried in a tool or client file.
 - **Dependency injection everywhere.** `AgentLoop`, `ToolRegistry`,
-  `AnthropicClient`, and every `Tool` receive their dependencies through
-  `__init__`, not by constructing them internally. This is what makes it
-  possible to swap the LLM provider or test with fake tools without
-  touching the loop.
+  every `LLMClient` implementation, and every `Tool` receive their
+  dependencies through `__init__`, not by constructing them internally.
+  This is what makes it possible to swap the LLM provider or test with
+  fake tools without touching the loop.
 - **One file, one responsibility.** Each tool is its own file. If a file
   starts doing two unrelated things, split it.
+- **Conversation history is provider-agnostic.** `Conversation` stores
+  `llm/messages.py` types (`Message`, `TextPart`, `ToolUsePart`,
+  `ToolResultPart`), never a specific provider's wire format. Each
+  `LLMClient` translates neutral <-> its own wire format right at the
+  API boundary (see `_to_anthropic_messages` / `_to_openai_messages`).
+  If you add a provider whose wire format doesn't fit this neutral
+  shape, extend `llm/messages.py` deliberately - don't leak a
+  provider-specific dict shape back out into `Conversation` or `AgentLoop`.
 
 ## How to add a new tool
 
@@ -108,12 +118,35 @@ This is the most common change you'll make. Steps:
 4. Test it manually by running `uv run coding-agent` and asking Claude to
    use it.
 
-## Adding a second LLM provider (if/when needed)
+## Adding a new LLM provider
 
-Create a new class implementing `LLMClient` (src/coding_agent/llm/base.py)
-next to `anthropic_client.py`, returning `LLMResponse` the same way. Wire
-the choice of client in `cli.py`. Don't build this speculatively before
-it's actually needed - YAGNI.
+There are two today (`anthropic`, `openrouter`) - both follow this same
+recipe, so a third is additive, not a rewrite:
+
+1. Create `src/coding_agent/llm/your_provider_client.py` with a class
+   implementing `LLMClient` (`llm/base.py`). Its `send()` must:
+   - Translate the incoming `list[Message]` (neutral, `llm/messages.py`)
+     into that provider's own wire format - see `_to_anthropic_messages`
+     or `_to_openai_messages` for the pattern. Pay attention to how tool
+     calls/results are represented; every provider does this differently
+     (Anthropic folds them into content blocks, OpenAI-style APIs use a
+     separate `tool_calls` field and a `role="tool"` message).
+   - Translate that provider's own tool-definition shape from our neutral
+     `{name, description, input_schema}` (already just JSON schema).
+   - Catch that provider's SDK exceptions around the actual API call and
+     re-raise as `LLMError` with a short, human-readable reason - check
+     what the SDK's `.body`/`.message` actually contain by triggering a
+     real error first, don't assume it matches another provider's SDK
+     (the `anthropic` and `openai` SDKs looked identical on the surface
+     but shaped their error `.body` differently - verified, not assumed).
+   - Parse the response back into `LLMResponse(text, tool_calls,
+     wants_tool_use)`.
+2. Add the provider to `_PROVIDER_API_KEY_ENV_VARS` in `config.py` and
+   `_BUILDERS` in `llm/factory.py`.
+3. Add its API key variable and an example model string to `.env.example`.
+4. Test manually: run with a deliberately invalid key first (confirms
+   the whole plumbing reaches the real API and errors come back clean),
+   then with a real key and a prompt that exercises every tool.
 
 ## Logging changes
 

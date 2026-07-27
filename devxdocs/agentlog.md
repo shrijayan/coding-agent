@@ -140,3 +140,117 @@ Updated README.md's troubleshooting table and "reading the screen"
 section to describe the new `error>` line instead of the old
 "crashes the session" behavior. Updated AGENTS.md's conventions section
 and module map to mention `LLMError` alongside the other exception types.
+
+---
+
+## [2026-07-27] Added OpenRouter as a second provider
+
+User asked for OpenRouter support. This meant a real refactor, not just
+a new file - documented here in some detail since it touches the
+conversation-history design decision from the very first session.
+
+**Why it wasn't additive-only:** `Conversation` stored messages in
+Anthropic's exact wire format (a deliberate v1 shortcut - see the very
+first log entry above, "revisit if a second provider is added"). OpenRouter
+is OpenAI-Chat-Completions-shaped, which represents tool calls/results
+structurally differently (tool calls in their own message field, tool
+results as their own `role="tool"` message, vs. Anthropic folding both
+into content blocks on user/assistant messages). Reusing Anthropic's
+format wouldn't have worked, so this was the right time to introduce a
+neutral format, per YAGNI - not before it was needed, but also not
+avoided once it was.
+
+**Research done before writing any code** (to avoid guessing wrong API
+shapes):
+- Fetched OpenRouter's docs. Found their `@openrouter/agent` package
+  (automatic tool-use loop, like our AgentLoop) is **TypeScript only**
+  - Python only gets the low-level Client SDK where "you manage tool
+    dispatch yourself." Good outcome: confirms we keep our own AgentLoop
+    as the orchestrator regardless, we're not tempted to outsource it.
+  - Confirmed OpenRouter's docs explicitly recommend the official
+    `openai` Python SDK pointed at `base_url="https://openrouter.ai/api/v1"`
+    as a supported drop-in-replacement pattern - used that instead of
+    hand-rolling HTTP or using OpenRouter's newer, less-established
+    native Python package.
+  - Queried OpenRouter's live `/api/v1/models` endpoint to confirm
+    `anthropic/claude-sonnet-5` and `openai/gpt-5.1` are real, current
+    model slugs before putting them in docs/config examples.
+  - Confirmed `max_tokens` (not the newer `max_completion_tokens`) is
+    the universally-supported param across OpenRouter's proxied models.
+- Inspected the installed `openai` SDK's actual types (`ChatCompletionMessage`,
+  tool call/result message shapes, exception hierarchy) the same way we
+  inspected `anthropic`'s types in an earlier session - never assumed
+  the two SDKs matched just because they look similar.
+
+**What changed:**
+- New `llm/messages.py`: neutral `Message`/`TextPart`/`ToolUsePart`/
+  `ToolResultPart` types. This is now the one conversation format the
+  rest of the app understands.
+- `llm/base.py`: `LLMResponse` simplified - dropped `raw_content` (no
+  longer needed, an assistant turn can be reconstructed from `text` +
+  `tool_calls`) and dropped the raw `stop_reason` string (Anthropic and
+  OpenAI-style APIs signal "wants more tools" completely differently -
+  `stop_reason == "tool_use"` vs. a non-empty `tool_calls` list - so each
+  client now resolves that difference itself into one plain
+  `wants_tool_use: bool`, instead of leaking either provider's enum
+  values through the shared interface).
+- `agent/conversation.py`: stores `list[Message]` (neutral) instead of
+  Anthropic-shaped dicts.
+- `llm/anthropic_client.py`: now translates neutral <-> Anthropic's
+  wire format (`_to_anthropic_messages`); response parsing otherwise
+  unchanged.
+- `llm/openrouter_client.py` (new): translates neutral <-> OpenAI Chat
+  Completions format via `_to_openai_messages`/`_to_openai_tool`; uses
+  the `openai` SDK pointed at OpenRouter.
+- `config.py`: added `AGENT_PROVIDER` (`anthropic` | `openrouter`,
+  fail-fast if neither). Only the API key env var matching the selected
+  provider is required - e.g. `OPENROUTER_API_KEY` is never checked when
+  `AGENT_PROVIDER=anthropic`. Mapping of provider -> its key's env var
+  name lives in `_PROVIDER_API_KEY_ENV_VARS`, treated as fixed program
+  wiring, not environment config.
+- `llm/factory.py` (new): `build_llm_client(config)` - the one place
+  that knows every provider's concrete class.
+- `cli.py`: uses the factory instead of hardcoding `AnthropicClient`;
+  startup line now prints `(provider / model)` so it's obvious which
+  backend is active.
+- `.env.example`, `README.md`, `AGENTS.md`: all updated for the two-
+  provider setup (README gets a proper "Option A / Option B" table in
+  the setup steps; AGENTS.md's "Adding a second LLM provider (if/when
+  needed)" section became "Adding a new LLM provider" with a concrete,
+  accurate recipe now that it's been done once for real).
+
+**A real bug caught by testing rather than assuming:** initially wrote
+`OpenRouterClient._describe()` copying AnthropicClient's error-body
+extraction (`body["error"]["message"]`). Triggered a real 401 against
+OpenRouter to verify the clean-message output, and the extraction
+silently failed - the `openai` SDK's `.body` is *already* the unwrapped
+inner error object (`{"message": ..., "code": 401}`), unlike `anthropic`'s
+`.body` which keeps the outer `"error"` key. Fixed by inspecting the
+actual object returned, not by assuming the two generated SDKs behave
+identically because they look alike on the surface.
+
+**Verified manually:**
+1. Full regression on the Anthropic path after the refactor: a single
+   request that chained list_files -> bash -> write_file -> read_file ->
+   edit_file -> read_file (5 tool calls in one turn) still worked
+   end-to-end.
+2. Config validation: missing `AGENT_PROVIDER`, invalid provider value,
+   and "openrouter selected but OPENROUTER_API_KEY missing" all produce
+   the expected fail-fast errors (tested in an isolated `env -i` shell to
+   rule out `.env`/shell env leaking into the test).
+3. OpenRouter plumbing end-to-end *except* a successful model response
+   (no real OpenRouter key available yet): deliberately invalid key ->
+   real HTTP call reached OpenRouter's servers -> clean
+   `error> OpenRouter returned an error (401): Missing Authentication header`
+   -> session stayed alive. Confirms config, factory, and error-handling
+   all work; only the "happy path with a real key" is unverified.
+4. Unit-verified both translation functions directly (no network) with a
+   simulated multi-turn tool-use conversation, and checked the JSON output
+   matches each provider's documented shape exactly.
+
+**Not yet done:** a live successful OpenRouter tool-calling round trip -
+user didn't have an OpenRouter key on hand this session. Whoever picks
+this up next: get a key at openrouter.ai/keys, set
+`AGENT_PROVIDER=openrouter` + `OPENROUTER_API_KEY` +
+`AGENT_MODEL=anthropic/claude-sonnet-5` (or any model slug) in `.env`,
+and run through the same demo prompts from the README to confirm.

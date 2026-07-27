@@ -1,15 +1,18 @@
 """The contract for talking to a large language model.
 
-The agent loop depends on this abstract interface, not on Anthropic
-directly (dependency inversion). Today there's one implementation,
-AnthropicClient, but the loop has no idea that's the case - it just
-calls .send(). That's what would let us add a second provider later,
-or substitute a fake client in a test, without touching the loop.
+The agent loop depends on this abstract interface, not on any specific
+provider (dependency inversion). There are two implementations today,
+AnthropicClient and OpenRouterClient, but the loop has no idea that's
+the case - it just calls .send(). That's what lets us add a third
+provider later, or substitute a fake client in a test, without
+touching the loop.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+
+from coding_agent.llm.messages import Message, ToolUsePart
 
 
 class LLMError(RuntimeError):
@@ -27,27 +30,19 @@ class LLMError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class ToolCall:
-    """One tool invocation the model is requesting."""
-
-    id: str
-    name: str
-    input: dict[str, Any]
-
-
-@dataclass(frozen=True)
 class LLMResponse:
     """The model's next move, normalized away from any provider's SDK types."""
 
     text: str
-    tool_calls: list[ToolCall]
-    raw_content: list[dict[str, Any]]
-    stop_reason: str
+    tool_calls: list[ToolUsePart]
+    wants_tool_use: bool
+    """True when the model is asking us to run tools before it continues.
 
-    @property
-    def wants_tool_use(self) -> bool:
-        """True when the model is asking us to run tools before it continues."""
-        return self.stop_reason == "tool_use"
+    Each provider signals this differently (Anthropic sets
+    stop_reason="tool_use"; OpenAI-style APIs just include a non-empty
+    tool_calls list) - that difference is resolved by the client, so
+    everything downstream only ever sees this one plain boolean.
+    """
 
 
 class LLMClient(ABC):
@@ -58,15 +53,16 @@ class LLMClient(ABC):
         self,
         *,
         system: str,
-        messages: list[dict[str, Any]],
+        messages: list[Message],
         tools: list[dict[str, Any]],
     ) -> LLMResponse:
         """Send the full conversation and tool list, get the next response.
 
-        messages/raw_content use the wire format of the underlying provider
-        (here, Anthropic's Messages API) since that's what needs to be
-        replayed back on every turn - we don't invent our own format only
-        to translate it back and forth for no benefit.
+        messages is our own provider-agnostic format (see llm/messages.py);
+        translating it into the wire format a specific provider expects is
+        this method's job. tools is a list of {name, description,
+        input_schema} dicts - the same neutral shape ToolRegistry already
+        produces, since that's already just plain JSON-schema.
 
         Raises LLMError if the model can't be reached or rejects the
         request (bad key, rate limit, network issue, server error, ...).

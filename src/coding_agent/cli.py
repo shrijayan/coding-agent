@@ -10,8 +10,8 @@ from typing import Any
 
 from coding_agent.agent.loop import AgentLoop
 from coding_agent.config import Config, MissingConfigError
-from coding_agent.llm.anthropic_client import AnthropicClient
 from coding_agent.llm.base import LLMError
+from coding_agent.llm.factory import build_llm_client
 from coding_agent.system_prompt import SYSTEM_PROMPT
 from coding_agent.tools.bash import BashTool
 from coding_agent.tools.edit_file import EditFileTool
@@ -33,7 +33,7 @@ def run() -> None:
 
     agent = _build_agent(config)
 
-    print("Coding Agent ready. Type 'exit' to quit.\n")
+    print(f"Coding Agent ready ({config.provider} / {config.model}). Type 'exit' to quit.\n")
     while True:
         try:
             user_input = input("you> ").strip()
@@ -57,11 +57,7 @@ def run() -> None:
 
 
 def _build_agent(config: Config) -> AgentLoop:
-    llm_client = AnthropicClient(
-        api_key=config.api_key,
-        model=config.model,
-        max_tokens=config.max_tokens,
-    )
+    llm_client = build_llm_client(config)
     tool_registry = ToolRegistry(
         tools=[
             ReadFileTool(),
