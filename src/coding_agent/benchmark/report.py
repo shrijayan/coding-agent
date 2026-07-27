@@ -13,16 +13,28 @@ from coding_agent.benchmark.tasks import TASKS
 from coding_agent.config import Config
 from coding_agent.metrics.pricing import PricingTable
 from coding_agent.metrics.usage import Usage
-from coding_agent.optimizations.bundle import OptimizationBundle
+from coding_agent.optimizations.available import AVAILABLE_OPTIMIZATIONS
+from coding_agent.optimizations.bundle import ConflictingOptimizationsError
+from coding_agent.optimizations.registry import OptimizationRegistry, UnknownOptimizationError
 
 
 def run_benchmark(
     config: Config,
     pricing: PricingTable,
-    optimizations: OptimizationBundle,
     enabled_names: list[str],
 ) -> None:
     """Run every task in TASKS, print progress as it goes, then a summary."""
+    registry = OptimizationRegistry(AVAILABLE_OPTIMIZATIONS)
+
+    # Validate once, up front, before any (possibly slow) sandbox setup
+    # runs - a typo in --enable should fail immediately, not after
+    # minutes of cloning repos and installing dependencies.
+    try:
+        registry.resolve(enabled_names)
+    except (UnknownOptimizationError, ConflictingOptimizationsError) as error:
+        print(f"Configuration error: {error}")
+        raise SystemExit(1) from error
+
     optimizations_label = ", ".join(enabled_names) or "none"
     print(
         f"Running benchmark ({len(TASKS)} tasks, {config.provider} / {config.model}, "
@@ -34,6 +46,12 @@ def run_benchmark(
         root = Path(tmp)
         for task in TASKS:
             print(f"[{task.instance_id}] setting up sandbox and running agent...")
+            # Resolve a *fresh* bundle per task, not one shared across all
+            # of them: a stateful optimization (e.g. conversation
+            # summarization, which caches a running summary) must not
+            # carry state between what are otherwise fully independent
+            # tasks - each one is a clean conversation from scratch.
+            optimizations = registry.resolve(enabled_names)
             result = run_task(
                 task,
                 root,

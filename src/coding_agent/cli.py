@@ -40,6 +40,12 @@ def run() -> None:
         print(f"Configuration error: {error}")
         raise SystemExit(1) from error
 
+    if args.benchmark:
+        from coding_agent.benchmark.report import run_benchmark
+
+        run_benchmark(config, pricing, args.enabled_optimizations)
+        return
+
     try:
         optimizations = OptimizationRegistry(AVAILABLE_OPTIMIZATIONS).resolve(
             args.enabled_optimizations
@@ -47,12 +53,6 @@ def run() -> None:
     except (UnknownOptimizationError, ConflictingOptimizationsError) as error:
         print(f"Configuration error: {error}")
         raise SystemExit(1) from error
-
-    if args.benchmark:
-        from coding_agent.benchmark.report import run_benchmark
-
-        run_benchmark(config, pricing, optimizations, args.enabled_optimizations)
-        return
 
     usage_tracker = UsageTracker()
     agent = build_agent(config, usage_tracker, optimizations)
