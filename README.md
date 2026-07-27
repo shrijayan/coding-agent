@@ -267,6 +267,14 @@ add a new optimization"). Run the same prompt with and without the
 flag, and compare the two `/usage` outputs - that side-by-side is the
 whole point.
 
+For a more rigorous before/after than a hand-typed prompt, `uv run
+coding-agent --benchmark` (optionally with `--enable`) runs a fixed
+suite of real coding tasks and prints resolved-count/tokens/cost/time -
+see `AGENTS.md`'s "Benchmark" section. This takes a few minutes (it's
+setting up real, isolated environments per task), so it's better suited
+to "run it, go grab a coffee, compare the two reports" than a live
+step-by-step demo.
+
 ---
 
 ## 6. Settings you can tweak
