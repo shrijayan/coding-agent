@@ -12,6 +12,13 @@ change, run it to check it works, and tell you what they did.
 This guide assumes no prior experience with any of these tools. Follow the
 numbered steps in order and you'll have it running.
 
+> **No setup? Run it in your browser instead:** open the
+> [Google Colab notebook](https://colab.research.google.com/drive/1FLEizDHk6lk08mdiQrlggBp4doTlyPaw)
+> and run the cells top to bottom - it clones this project, installs
+> everything, and starts the agent for you. You'll still need an API key
+> ([Step 4](#4-setup-step-by-step)). Installing it on your own machine
+> is fully optional.
+
 ---
 
 ## Contents
