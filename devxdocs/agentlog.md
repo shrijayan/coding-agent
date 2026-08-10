@@ -877,3 +877,140 @@ exercise. Left as a deliberate follow-up to keep this change reviewable.
   not /usage (pre-existing gap).
 - Prices are as-listed today; verify slugs/prices before the workshop -
   they're a one-line YAML edit each.
+
+---
+
+## [2026-08-10] Colab workshop notebook (draft)
+
+Added `notebooks/optimizing_llm_apps.ipynb` - the hands-on notebook for the
+"Optimizing LLM-Powered Applications" workshop. It clones this repo in
+Colab, installs deps, takes an OpenRouter key, then walks attendees from the
+base agent through each optimization, measuring real tokens/cost each step.
+
+### How it drives the agent
+
+Does NOT shell out to the REPL. It drives the agent IN-PROCESS, the same way
+`benchmark/runner.py` does: `build_agent(config, usage_tracker, bundle,
+pricing=...)` + `agent.run_turn(prompt)`. This is what lets it capture exact
+per-run tokens/cost. `/usage` is reproduced via `UsageCommand(...).run()`
+and routing `/metrics` via `RoutingMetricsCommand(...).run()` - no new code
+in the repo, the notebook just instantiates the existing commands.
+
+Two harness helpers in the notebook: `WorkshopSession(optimizations=[...])`
+(wraps a session, `.ask()`, `.usage_report()`, `.routing_report()`,
+`.metrics()`) and `run_scenario(label, opts, prompts)` + `compare(baseline,
+*others)` (runs the shared prompt set, prints a pandas table with % saved).
+Optimization names are auto-discovered from `AVAILABLE_OPTIMIZATIONS`.
+
+### Decisions (user was unavailable; made autonomously)
+
+- Clone URL `https://github.com/shrijayan/coding-agent` (main).
+- Model slugs treated as possibly-placeholder: added a Step-5 connectivity
+  ping that fails loudly before the demos if a slug/key is wrong.
+- API key: Colab Secrets (`userdata`) first, else hidden `getpass`.
+- Covered the two REAL optimizations (conversation-summary, hybrid-routing)
+  + combined; added a "coming soon" section for the not-yet-built ones.
+- Shared `DEMO_PROMPTS`: a 5-turn calculator build (multi-turn so summary
+  triggers past the threshold; routine edits so routing sends them cheap).
+  Same prompts for every config so before/after is apples-to-apples.
+- Sets required env in-notebook (AGENT_PROVIDER=openrouter, iterations,
+  bash timeout, summary thresholds 8/4). Uses a `playground/` scratch dir
+  (agent tools act on cwd; models.yaml is package-relative so chdir is safe).
+
+### Verified
+
+- Built the .ipynb from a throwaway `json.dump` builder (deleted after);
+  valid notebook JSON, 38 cells, nbformat 4.
+- Offline smoke test (throwaway, deleted): constructed a WorkshopSession for
+  all four combos ([], summary, routing, both) under a dummy key - imports
+  resolve, sessions build, `/usage` + `/metrics` render, no network hit.
+
+### FOR THE NEXT SESSION (adding a new optimization)
+
+When prompt-caching / context-window-opt / agent-loop-prevention land:
+implement + register one line in `optimizations/available.py`, then in the
+notebook add a concept markdown cell + a `run_scenario("+ name", ["name"],
+DEMO_PROMPTS)` + `compare(baseline, ...)` cell, and add it to the `runs`
+list feeding the scoreboard. No harness changes needed. (Also noted in repo
+memory: `/memories/repo/workshop-notebook.md`.)
+
+### Follow-ups (not done, on purpose)
+
+- Notebook not executed end-to-end against a live model (no key here, and
+  the OpenRouter slugs may be placeholders) - the connectivity cell is the
+  guard for that. Run it once with a real key before the workshop.
+- Consider a "Open in Colab" badge in README pointing at this notebook once
+  its GitHub path is final.
+
+## [2026-08-10] Conference deck: modular offline HTML slides (ThoughtWorks / XConf 2026)
+
+Added `presentation/` - a self-contained, offline HTML slide deck for the
+"Optimizing LLM-Powered Applications" workshop, branded to the XConf 2026 /
+Thoughtworks template (extracted from `xconf_ppt.pdf`: dark teal #003d4f,
+coral #f2617a, amber/green/purple/teal accents, Bitter serif headings +
+Inter body, `/thoughtworks` wordmark, footer + slide numbers, the chrome "X"
+motif rebuilt in CSS). Built on reveal.js 5.1 (vendored, no CDN) so it runs
+by double-clicking `presentation/index.html` - no server, no network.
+
+### Structure (modular, one file per slide)
+
+- `index.html` - shell: persistent chrome (HUD, logo, footer) + `<script>`
+  includes. The order of the `slides/*.js` tags IS the deck order.
+- `css/` - `theme-thoughtworks.css` (brand tokens + reveal overrides),
+  `layouts.css` (cover/separator/split/cards/icon-rows/recap components),
+  `hud.css`, `animations.css` (the two data-state showcases).
+- `js/` - `components.js` (`TW.icon()` inline-SVG set), `hud.js` (the
+  top-right TOKENS + COST meter with number tweening + delta chips),
+  `deck.js` (assembles registered slides into reveal, then a single
+  declarative `update()` keeps HUD / visual `[data-state]` / chrome in sync
+  from whichever fragments are visible - so fwd AND back nav stay correct).
+- `slides/00..90-*.js` - each calls `Deck.add({ id, html, dark, hideHud,
+  tokens, cost, notes })`. 27 slides: presenters -> title -> agenda -> base
+  agent (loop, cost tracking, notebook) -> the 5 techniques -> recap ->
+  "add your own" -> dark thank-you.
+
+### The signature bits (from the brief / voice note)
+
+- Persistent top-right **token + cost HUD**, always on during technical
+  slides. Fragments carry `data-tokens` / `data-cost` / `data-hint`; the HUD
+  tweens to them (tokens can drop, cost only climbs - session-cumulative).
+- **Summarization "lab"** (slide 9): conversation history visibly collapses
+  into a running-summary card while the HUD's tokens crash ~74% and cost
+  ticks up for the (honestly counted) summarize call - exactly the
+  "long text -> summarized -> added to context, tokens down / cost up" ask.
+- **Routing ladder** (slide 16): a difficulty gauge + cheap/mid/high rungs
+  that light per example, incl. the quality-gate cascade. Both showcases are
+  driven purely by a `[data-state]` attribute set from visible fragments.
+
+### Honesty / grounding
+
+Two techniques are marked LIVE (conversation-summary, hybrid-routing - real
+`--enable` flags, code shown from `conversation_summary.py` /
+`hybrid_routing.py` / `models.yaml`); three are marked BUILDING (prompt
+opt+caching, context-window, loop-prevention) with design + where-they-plug-in
+(the `OptimizationBundle` hooks) rather than pretending they're done. Notebook
+cues point at the real headings in `notebooks/optimizing_llm_apps.ipynb`
+("Baseline...", "Optimization 1 - Conversation summarization", "Optimization
+2 - Model routing"). Presenter names/roles are `Presenter One/Two/Three`
+placeholders - find-and-replace in `slides/00-intro.js` (+ `90-closing.js`).
+
+### Verified
+
+- All `js/`+`slides/` pass `node --check`.
+- Headless Chrome (puppeteer-core against installed Chrome, throwaway harness
+  in TMP) loaded the deck from `file://`: 27 slides, reveal ready, HUD wired,
+  7 font faces loaded, **0 console/page errors**; stepped the summarize + the
+  routing-cascade fragments and confirmed HUD/state stay in sync on fwd/back;
+  screenshotted every slide for a visual pass. Found + fixed three real bugs:
+  `TW.icon()` returned raw paths (never wrapped in `<svg>`); dark slides had
+  no dark background (white-on-white) - now `data-background-color`; sections
+  weren't full-height so covers/separators collapsed - now fixed `.pad`
+  height. Fonts vendored as latin-subset woff2 (Bitter + Inter) under
+  `vendor/fonts/`.
+
+### Follow-ups (not done, on purpose)
+
+- Real presenter names/photos (placeholders left, avatars are CSS gradients).
+- Repo URL on the closing slide is `github.com/<your-org>/coding-agent`.
+- When the 3 BUILDING techniques land, flip their pills to LIVE and add a
+  notebook cue + code slide (same pattern as summarization/routing).

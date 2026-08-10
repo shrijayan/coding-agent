@@ -1,0 +1,191 @@
+/* =========================================================================
+   ThoughtWorks / XConf 2026 brand theme for reveal.js
+   Single source of brand truth: colors, type, backgrounds, chrome.
+   Layout components live in layouts.css; the HUD in hud.css; motion in
+   animations.css. Change a color here and the whole deck follows.
+   ========================================================================= */
+
+:root {
+  /* ---- Brand palette (sampled from the XConf 2026 template) ---- */
+  --tw-teal-900: #003d4f; /* primary dark / logo / dark sections   */
+  --tw-teal-700: #0a4a5c;
+  --tw-coral:    #f2617a; /* the "/" in the logo, accents, links   */
+  --tw-coral-600:#e2445f;
+  --tw-amber:    #cc850a;
+  --tw-green:    #6b9e78;
+  --tw-purple:   #634f7d;
+  --tw-teal:     #47a0ad;
+
+  --tw-ink:      #14181a; /* near-black body/heading text          */
+  --tw-ink-soft: #333b3f;
+  --tw-muted:    #6b7680; /* footer / secondary text               */
+  --tw-hair:     #d7dde0; /* hairlines                             */
+  --tw-card:     #edeff0; /* light card background                 */
+  --tw-card-2:   #f5f6f7;
+  --tw-white:    #ffffff;
+
+  /* ---- Type ---- */
+  --tw-serif: 'Bitter', Georgia, 'Times New Roman', serif;
+  --tw-sans:  'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --tw-mono:  'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* ---- reveal.js theme hooks ---- */
+  --r-background-color: var(--tw-white);
+  --r-main-font: var(--tw-sans);
+  --r-main-font-size: 26px;
+  --r-main-color: var(--tw-ink);
+  --r-heading-font: var(--tw-serif);
+  --r-heading-color: var(--tw-ink);
+  --r-heading-font-weight: 800;
+  --r-heading-line-height: 1.08;
+  --r-heading-letter-spacing: -0.01em;
+  --r-heading-text-transform: none;
+  --r-link-color: var(--tw-coral-600);
+  --r-link-color-hover: var(--tw-coral);
+  --r-selection-background-color: var(--tw-coral);
+  --r-selection-color: #fff;
+}
+
+/* ------------------------------------------------------------------ base */
+.reveal {
+  font-family: var(--tw-sans);
+  color: var(--tw-ink);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.reveal .slides { text-align: left; }
+
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  font-family: var(--tw-serif);
+  color: var(--tw-ink);
+  font-weight: 800;
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.35em 0;
+  text-transform: none;
+}
+.reveal h1 { font-size: 2.35em; }
+.reveal h2 { font-size: 1.75em; }
+.reveal h3 { font-size: 1.28em; }
+.reveal h4 { font-size: 1.05em; }
+.reveal p  { line-height: 1.4; margin: 0 0 0.7em 0; }
+.reveal strong, .reveal b { font-weight: 700; }
+.reveal em { font-style: italic; }
+.reveal a { text-decoration: none; border-bottom: 2px solid var(--tw-coral); padding-bottom: 1px; }
+
+.reveal ul, .reveal ol { display: block; margin: 0 0 0 1em; }
+.reveal li { line-height: 1.42; margin-bottom: 0.42em; }
+.reveal li::marker { color: var(--tw-coral); }
+
+/* section subtitle is bold sans, like the template's "Click to add subtitle" */
+.reveal .subtitle {
+  font-family: var(--tw-sans);
+  font-weight: 700;
+  font-size: 1.05em;
+  color: var(--tw-ink);
+  margin: -0.1em 0 0.8em 0;
+}
+
+/* small eyebrow / kicker above a heading */
+.reveal .kicker {
+  font-family: var(--tw-sans);
+  font-weight: 700;
+  font-size: 0.62em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tw-coral-600);
+  margin: 0 0 0.7em 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.reveal .kicker::before {
+  content: "";
+  width: 26px; height: 3px;
+  background: var(--tw-coral);
+  display: inline-block;
+}
+
+.reveal .muted { color: var(--tw-muted); }
+.reveal .lead  { font-size: 1.12em; color: var(--tw-ink-soft); line-height: 1.45; }
+
+/* ------------------------------------------------------- slide backgrounds */
+/* default light slide already white. Dark section variant: */
+.reveal section.dark {
+  color: #eef3f4;
+}
+.reveal section.dark h1,
+.reveal section.dark h2,
+.reveal section.dark h3 { color: #ffffff; }
+.reveal section.dark .muted { color: #9fb6bd; }
+.reveal section.dark a { border-bottom-color: var(--tw-coral); color: var(--tw-coral); }
+
+/* ---------------------------------------------------------------- controls */
+.reveal .controls { color: var(--tw-teal-900); }
+.reveal .progress { color: var(--tw-coral); height: 4px; }
+.reveal .progress span { background: var(--tw-coral); }
+
+/* slide number bottom-right, like the template's page numbers */
+.reveal .slide-number {
+  background: transparent;
+  color: var(--tw-muted);
+  font-family: var(--tw-sans);
+  font-size: 15px;
+  right: 20px; bottom: 14px;
+}
+.reveal.dark-chrome .slide-number { color: #7f9aa3; }
+
+/* =============================================================== brand chrome
+   Persistent logo + footer live in index.html (outside .slides) so they sit
+   on every slide. Colors flip when the current slide is dark.
+   ========================================================================= */
+.tw-logo {
+  font-family: var(--tw-sans);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--tw-teal-900);
+  display: inline-flex;
+  align-items: baseline;
+  line-height: 1;
+  user-select: none;
+}
+.tw-logo .slash {
+  color: var(--tw-coral);
+  font-weight: 800;
+  margin-right: 1px;
+  transform: skewX(-8deg);
+  display: inline-block;
+}
+body.chrome-dark .tw-logo { color: #ffffff; }
+
+.deck-footer {
+  position: fixed;
+  left: 26px;
+  bottom: 14px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--tw-sans);
+  font-size: 13px;
+  color: var(--tw-muted);
+  pointer-events: none;
+}
+.deck-footer .sep { color: var(--tw-hair); }
+body.chrome-dark .deck-footer { color: #7f9aa3; }
+body.chrome-dark .deck-footer .sep { color: #33525c; }
+
+.deck-brand {
+  position: fixed;
+  left: 26px;
+  bottom: 40px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* Hide chrome entirely on the very first (welcome) slide if desired */
+body.chrome-hidden .deck-footer,
+body.chrome-hidden .deck-brand,
+body.chrome-hidden .reveal .slide-number { opacity: 0; }
