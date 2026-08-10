@@ -111,7 +111,7 @@ class ConversationSummaryPolicy(HistoryPolicy):
         )
         # A real API call - must be counted, not hidden overhead that
         # would make this optimization look cheaper than it actually is.
-        context.usage_tracker.record_llm_call(response.usage)
+        context.usage_tracker.record_llm_call(response.usage, response.model)
         return response.text
 
 

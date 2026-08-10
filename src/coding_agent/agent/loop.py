@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from coding_agent.agent.conversation import Conversation
 from coding_agent.llm.base import LLMClient
+from coding_agent.metrics.cost_guard import CostGuard
 from coding_agent.metrics.usage import UsageTracker
 from coding_agent.optimizations.history_policy import HistoryContext, HistoryPolicy
 from coding_agent.tools.registry import ToolRegistry
@@ -45,6 +46,7 @@ class AgentLoop:
         max_iterations: int,
         usage_tracker: UsageTracker,
         history_policy: HistoryPolicy,
+        cost_guard: CostGuard | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -52,6 +54,7 @@ class AgentLoop:
         self._max_iterations = max_iterations
         self._usage_tracker = usage_tracker
         self._history_policy = history_policy
+        self._cost_guard = cost_guard
         self.conversation = Conversation()
 
     def run_turn(
@@ -73,6 +76,14 @@ class AgentLoop:
         )
 
         for _ in range(self._max_iterations):
+            # Soft budget guard: stop before the next call once the session
+            # has spent its cap, rather than quietly running a shared budget
+            # down (see metrics/cost_guard.py).
+            if self._cost_guard is not None and self._cost_guard.exceeded(
+                self._usage_tracker
+            ):
+                return self._cost_guard.notice(self._usage_tracker)
+
             messages_to_send = self._history_policy.prepare(
                 self.conversation.messages, history_context
             )
@@ -81,7 +92,7 @@ class AgentLoop:
                 messages=messages_to_send,
                 tools=self._tool_registry.definitions(),
             )
-            self._usage_tracker.record_llm_call(response.usage)
+            self._usage_tracker.record_llm_call(response.usage, response.model)
             self.conversation.add_assistant_turn(response.text, response.tool_calls)
 
             if not response.wants_tool_use:

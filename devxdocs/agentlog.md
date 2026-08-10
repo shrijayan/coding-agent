@@ -519,3 +519,361 @@ for workshop attendees.
 **Not yet done:** conversation summarization (the actual first
 `AVAILABLE_OPTIMIZATIONS` entry) - next per the agreed order, now
 unblocked since the benchmark exists to validate it against.
+
+---
+
+## Hybrid pre-generation router + post-generation cascade (`--enable hybrid-routing`)
+
+Added a cost-optimizing routing layer as a single optimization, following
+the survey "Dynamic Model Routing and Cascading for Efficient LLM
+Inference". It combines difficulty-aware pre-generation routing with a
+post-generation cascade: each outgoing `send()` is scored 0-1 for
+difficulty using free/local features; easy calls go to a local free
+Ollama cheap tier first; a deterministic AST quality gate checks the
+cheap output and escalates to the powerful tier only on failure (or when
+pre-classified hard).
+
+**Wired entirely through existing extension points** — no new subsystem:
+- `optimizations/hybrid_routing.py` — `build() -> OptimizationBundle(wrap_llm_client=...)`,
+  plus `RoutingLLMClient` (the decorator) and a shared-tracker accessor
+  `get_tracker()`. One-line registration in `optimizations/available.py`.
+- `optimizations/routing/` (one responsibility per file): `features.py`
+  (lexical signals), `router.py` (`score_difficulty` + a `predict()`
+  upgrade seam for a future sklearn classifier), `quality_gate.py`
+  (`ast.parse` of fenced ```python blocks — the meaningful cheap gate at
+  the `send()` boundary, since the response here is usually tool calls,
+  not a code file), `metrics.py` (`RoutingTracker`, mirrors `UsageTracker`).
+- `llm/ollama_client.py` — new `LLMClient` over Ollama's OpenAI-compatible
+  API, mirrors `openrouter_client.py` (same translation helpers), reuses
+  the already-present `openai` SDK (no LiteLLM). Unreachable Ollama →
+  clean `LLMError`, not a crash.
+- `commands/metrics_command.py` — `/metrics`, mirrors `/usage`, registered
+  in `cli.py` only when the flag is on. `cli.py` also prints a compact
+  per-turn routing annotation (a turn spans many `send()`s, so it
+  summarizes that turn's records rather than printing per-`send()`).
+- `config.py` — added `AGENT_ROUTING_*` fields with new `_require_float`
+  and `_require_bool` helpers; matching `.env.example` block.
+- `metrics/pricing.json` — `ollama/qwen2.5-coder:7b` at $0/$0 (local =
+  free; still needs an entry or the agent fails fast). Cost stays
+  real-tokens × pricing, never estimated — no parallel cost path.
+- `pyproject.toml` — `[dependency-groups] dev = [pytest, ruff]` (dev-only).
+
+**Key repo-specific decision:** routing is scored per `LLMClient.send()`
+(the `wrap_llm_client` boundary), NOT per user turn — the tool loop makes
+many sends per turn. Features score the latest *user* text so all sends
+in a turn route consistently.
+
+**Fallbacks (demo never hard-fails):** Ollama down → escalate to powerful
+(`cheap_error`); powerful key unset → cheap-only, gate still runs, no
+escalation (belt-and-suspenders — `Config` already requires the key at
+startup).
+
+**Verified in the terminal (not just by reading code):**
+- `uv run pytest` — 10/10 pass in `tests/test_hybrid_routing.py` (fake
+  in-memory `LLMClient`s, no HTTP): easy→cheap+gate-pass, hard→direct
+  (score ≥ threshold), invalid-python→`cheap_escalated`
+  (`ast_valid=false`), unreachable-cheap fallback, no-key cheap-only,
+  `/metrics` aggregation (escalation rate, gate pass rate, cost), and
+  pre-existing `/usage` + registry untouched.
+- `OllamaClient` hit the real local Ollama (`qwen3.6:latest`, since
+  `qwen2.5-coder:7b` wasn't pulled) → real token counts (in=24, out=128).
+- Unreachable base URL → clean actionable `LLMError`.
+- App boots with `--enable hybrid-routing`; `/metrics` and `/usage` both
+  render. Without the flag, `/metrics` is correctly unknown and behavior
+  is unchanged.
+- `ruff check` clean on all new/changed files.
+
+**Note for whoever runs the live demo:** `ollama pull qwen2.5-coder:7b`
+first (only `qwen3.6:latest` was present on this machine). Wrote
+`README_ROUTING.md` (workshop-facing: why, ASCII diagram, terminal UX,
+which two paradigms + why hybrid beats either alone, run steps, the
+`:free` OpenRouter stopgap for testing escalation pre-license, and the
+`predict()`/embedding upgrade hooks).
+
+---
+
+## Hybrid routing v2: configurable N-tier ladder, fixed scorer, stronger gate
+
+Follow-up to the previous entry, after review questions exposed three
+real weaknesses. All three are now fixed, with regression tests.
+
+### 1. The difficulty scorer had a structural bug (worst of the three)
+
+The original scorer leaned entirely on hardcoded keyword lists. Measured
+it: a genuinely hard 61-word prompt (GraphQL resolver fan-out, connection
+pool saturation, backpressure) using none of the listed keywords scored
+**0.35** and was routed to the 7B local model. Worse, it was structural -
+with zero hard-keyword hits the max achievable was LENGTH(0.35) +
+FENCE(0.15) = **0.50, below the 0.55 threshold**, so such a request could
+*never* reach the powerful tier regardless of difficulty.
+
+Fix: added **vocabulary-independent** signals to `features.py` that need
+no word list - `long_word_ratio` (words >= 9 chars, a proxy for technical
+register) and `clause_count` (sentences + connectives = how many things
+are being asked at once). Reweighted `router.py` so those three
+vocab-independent signals sum to **0.70**, above any sane threshold;
+keywords are now a precision boost, not the foundation. Same prompt now
+scores 0.58 -> correctly routed. Easy prompts still score 0.00. Both
+properties are locked in by tests (incl. an explicit assertion that the
+vocab-independent ceiling exceeds the threshold).
+
+Known remaining limit, documented rather than overfitted around: a short
+(~20 word) conceptually-hard request still scores ~0.42 and starts cheap.
+Tuning weights to catch it misfires on short-but-easy technical requests,
+so that case is deliberately left to the gate.
+
+### 2. Quality gate widened beyond "does the Python parse"
+
+The gate is what catches pre-router misses, so it got five new
+deterministic checks alongside `ast_valid`: `unterminated_code_fence`
+(truncated output), `refusal`, `placeholder_code` (TODO stubs),
+`missing_tool_arguments` (validated against the tool's own JSON schema,
+which is available at the send() boundary), plus the existing
+`empty_response`. All conservative by design - a false FAIL costs a real
+paid escalation - e.g. a refusal phrase is ignored when the model also
+produced code or called a tool.
+
+### 3. Two hardcoded tiers -> a config-driven N-tier ladder
+
+`RoutingLLMClient` was hardcoded to `_cheap` and `_inner`. Replaced with
+an ordered ladder loaded from **`optimizations/routing/tiers.json`**
+(new), mirroring how `pricing.json` is plain data: each tier has name,
+provider, model, and `difficulty_ceiling`. Pre-routing = start at the
+first tier whose ceiling covers the score; cascading = climb one rung on
+gate failure, repeat. Adding a mid tier is now a data edit, no code
+change. Validation is fail-fast (`InvalidTierConfigError`): ceilings must
+ascend, names unique, last tier must be 1.0, non-`inner` tiers need a
+model. Special provider `inner` = reuse the wrapped client
+(AGENT_PROVIDER/AGENT_MODEL), so there's still no parallel POWERFUL_MODEL.
+
+Supporting changes: `llm/factory.py` gained `build_provider_client()` for
+arbitrary provider/model pairs and registered `ollama` (adding a provider
+remains 3 small edits); `Config` gained `available_provider_keys` so a
+second paid provider's key can be found without any module outside
+config.py touching os.environ; `RoutingRecord` gained `tier` and `hops`;
+`/metrics` gained an "Answered by tier" breakdown.
+
+**Bug the new tests caught:** when a request escalated and the higher tier
+passed, the record stored the *winning* tier's clean gate result -
+erasing why it escalated at all. `_climb` now always reports the **first**
+attempted tier's outcome, which is both the escalation reason and the
+routing-relevant signal. Also documented that `gate_pass_rate` counts the
+first tier attempted on every send (including direct-to-top ones), so it
+measures the routing decision, not just the cheap model - the metrics
+test asserts the resulting 66.7%, not a hand-waved number.
+
+### Verified in the terminal
+
+- `uv run pytest` - **32/32 pass** (was 10), incl. 3-tier stepwise
+  escalation, tier-skipping, 4 parametrized invalid-ladder cases, and one
+  test per new gate check.
+- **Real end-to-end with live Ollama**: pointed the cheap tier at the
+  pulled `qwen3.6:latest` and ran an actual turn. The local model handled
+  the whole thing - 3 sends including `list_files` + `write_file` tool
+  calls - at **$0.0000**, paid tier never touched (the dummy API key was
+  never even used). Confirms the new `missing_tool_arguments` check
+  doesn't false-positive on real tool calls.
+- Verified the 3-tier ladder loads and routes (0.1->cheap, 0.5->mid,
+  0.9->strong) purely from the data file, and that a tier model missing
+  from pricing.json fails fast at startup with an actionable message.
+- REPL boots with the flag, without it (`/metrics` correctly unknown,
+  `/usage` unchanged), and combined with `conversation-summary`.
+- `ruff check` clean on all files this task touched. Pre-existing lint
+  findings in `benchmark/`, `agent/conversation.py`, and `tools/bash.py`
+  were left alone - not part of this task.
+- Cleaned up after the live run (removed the file the agent wrote,
+  restored `tiers.json` and `pricing.json`).
+
+**Note:** `qwen2.5-coder:7b` still isn't pulled on this machine (only
+`qwen3.6:latest`); run `ollama pull qwen2.5-coder:7b` before the demo, or
+point tiers.json at a model you have. README_ROUTING.md updated
+throughout, including an explicit note on why Terraform is the wrong tool
+for this config and what is/isn't configurable without code changes.
+
+## [2026-08-05] /usage made model-aware: per-model tokens + correctly priced cost
+
+### Problem
+
+With `--enable hybrid-routing`, `/usage` always showed
+`Provider/model : anthropic / claude-sonnet-5` and priced the whole
+session at the configured model's rate - even when the routing ladder
+served calls with `ollama/qwen2.5-coder:7b`. Root cause: `LLMResponse`
+carried no model info, so `UsageTracker` merged all tokens into one
+total and `UsageCommand` hardcoded `Config.model` for both display and
+cost. The routing wrapper knew the answering tier (`LiveTier.model`) but
+recorded it only into its separate `RoutingTracker` (`/metrics`). The
+benchmark report had the same bug (`report.py` priced all usage at
+`config.model`).
+
+### What changed
+
+- `llm/base.py`: `LLMResponse` gains `model: str = ""` - the exact
+  pricing.json key of the model that served the call. Default "" only so
+  fake clients keep working; every real client sets it.
+- All three clients set it: Anthropic/OpenRouter use `self._model`;
+  OllamaClient keeps the original prefixed string (`ollama/...`) in a new
+  `self._model_id` since it strips the prefix for the API call but
+  pricing.json is keyed on the prefixed form.
+- `hybrid_routing.py`: `RoutingLLMClient.send()` stamps the answering
+  tier's model onto the returned response via `dataclasses.replace`.
+- `metrics/usage.py`: `UsageTracker` gains `by_model` / `calls_by_model`;
+  `record_llm_call(usage, model)` now requires the model. Both callers
+  updated (`agent/loop.py`, `optimizations/conversation_summary.py` -
+  the summarizer's own calls are attributed too).
+- `commands/usage_command.py`: shows `Configured` + `Models used` lines,
+  a `Per model:` block (calls, tokens, cost each - only when >1 model),
+  and total cost summed per model at each model's own rate. A defensive
+  ""-bucket (client that didn't report a model) is attributed to the
+  configured model.
+- Benchmark: `TaskResult` gains `usage_by_model`; `report.py` prices per
+  model (summary + per-task) and prints a per-model block when more than
+  one model was used, so routed cheap-tier tokens are no longer billed at
+  the configured model's rate.
+- Tests: routed responses assert `response.model`; new tests for
+  per-model accumulation and for `/usage` pricing each model at its own
+  rate (1M free ollama tokens + 1M claude input tokens = $2.0000, not
+  $12+ at claude rates).
+
+### Deliberately out of scope
+
+Failed escalation attempts' tokens (cheap tier answers, gate rejects,
+ladder climbs) are still not counted anywhere - `_climb()` discards the
+failed response, and recording it would need the `UsageTracker` injected
+into the wrapper (an `OptimizationBundle` API change). Pre-existing gap,
+noted, not widened.
+
+### Verified
+
+- `uv run pytest` - 34/34 pass (was 32; 2 new).
+- Rendered `/usage` manually for a mixed-model session (per-model block,
+  cost $0.0018 = claude tokens only) and a single-model session (output
+  shape unchanged apart from the `Configured`/`Models used` split).
+
+### Follow-up (same session)
+
+The `Configured` line still only showed `anthropic / claude-sonnet-5`
+even with routing enabled - misleading next to a `Models used` line
+listing ollama. `UsageCommand` now accepts optional
+`configured_models`; cli.py passes the routing ladder (cheapest first,
+'inner' resolved to `config.model`) when hybrid-routing is enabled, so
+the header reads
+`Configured : ollama/qwen2.5-coder:7b -> claude-sonnet-5 (routing ladder)`.
+Plain sessions keep the `provider / model` form. The routing setup block
+in cli.py moved above command construction so the ladder is known when
+`/usage` is built. 34/34 tests still pass.
+
+### Follow-up 2 (same session): per-turn summary for non-routing modes
+
+hybrid-routing sessions got a per-turn annotation line (path, model,
+difficulty, gate, latency, cost) but the base agent printed nothing
+after a turn. cli.py now prints a mode-appropriate line after every
+turn:
+
+- base agent: `↳ <model> · <n> LLM calls · <tokens> tokens ·
+  <wall-clock>ms · $<cost>` (new `_format_turn_summary`, computed by
+  diffing UsageTracker.by_model before/after the turn - same snapshot
+  pattern the routing summary already used; cost priced per model, no
+  estimates)
+- routing sessions keep their existing richer line; difficulty/gate
+  fields stay routing-only.
+
+AGENTS.md ("Token/cost tracking") now documents the convention: a new
+optimization that introduces its own mode with its own signals should
+add its own per-turn line in cli.py, showing only fields that apply to
+that mode. 34/34 tests still pass; line rendering verified manually,
+including the no-LLM-call case (prints nothing).
+
+## [2026-08-06] Unified models.yaml: provider/model config, cheap->high routing ladder, per-model metadata, session cost cap
+
+### Why
+
+Workshop needs: (1) provider + models driven from one YAML instead of
+scattered env/JSON, (2) a cheap->high OpenRouter routing ladder that fits
+a $100 OpenRouter budget across ~60-70 participants (90 min, ~$1 each) plus
+our own testing, (3) per-model metadata so the pre-routing phase has
+context. User was away and delegated the decisions.
+
+### What changed (single source of truth)
+
+`src/coding_agent/models.yaml` (NEW) now drives everything about *which*
+models are used - replacing both `metrics/pricing.json` and
+`optimizations/routing/tiers.json` (both deleted) and the env-only
+provider/model defaults. Four sections: `default:` (base provider/model/
+max_tokens), `session_cost_cap_usd:`, `models:` (catalog = price +
+metadata per model), `routing:` (ladder + gate/ollama settings). Loaded &
+validated by `models_config.py` (NEW). Secrets still live only in `.env`;
+`AGENT_PROVIDER/MODEL/MAX_TOKENS/SESSION_COST_CAP_USD` are now optional
+overrides of the YAML defaults.
+
+- `pricing.py`: `PricingTable.load()` reads the `models:` catalog (was
+  pricing.json). `load(path=)` added for tests.
+- `tiers.py`: `load_tiers()` reads `routing.tiers` from models.yaml; a
+  tier names only a `model` and its provider is resolved from the catalog
+  (still supports explicit `provider`, incl. `inner`). Validation intact.
+- `config.py`: provider/model/max_tokens/cost-cap/routing settings default
+  from models.yaml, env overrides. Dropped reference-only
+  `routing_cheap_model` / `routing_difficulty_threshold`.
+- Cost cap: `metrics/cost_guard.py` (NEW) `CostGuard`; `AgentLoop` gets an
+  optional guard and, before each send, stops with a notice once the
+  session's estimated cost crosses the cap. `build_agent(pricing=...)`
+  wires it for the REPL; benchmark passes no pricing so it stays uncapped
+  (a controlled measurement shouldn't be cut off mid-task).
+- `/usage`: now shows the cost cap (`$X / $cap cap`) and a per-model
+  strengths note from the catalog metadata. cli passes catalog metadata +
+  cap in.
+- Docs: AGENTS.md (module map + new "Model config" + cost-cap sections),
+  README_ROUTING.md, .env.example all updated. Added pyyaml dependency.
+
+### The routing ladder chosen (from live openrouter.ai pricing, per 1M tok)
+
+| tier | model | $ in / out | difficulty_ceiling |
+|---|---|---|---|
+| cheap | deepseek/deepseek-v4-flash-0731 | 0.09 / 0.18 | 0.45 |
+| mid   | thinkingmachines/inkling-small  | 0.45 / 1.20 | 0.75 |
+| high  | qwen/qwen3.8-max                | 2.00 / 6.00 | 1.00 |
+
+Base default (routing off) = the mid model. Catalog also keeps
+claude-sonnet-5 / anthropic/claude-sonnet-5 / ollama/qwen2.5-coder:7b for
+non-workshop setups + tests.
+
+### Budget math (why this fits $100)
+
+Rough per-participant 90-min session ~= 40 turns x 8 LLM calls x (4k in +
+400 out) ~= 1.28M input / 128k output tokens.
+- With routing (70% cheap / 20% mid / 10% high): ~$0.58/participant ->
+  ~$40 for 70 people. Fits $100 with testing headroom.
+- Without routing (all high): ~$3.33/participant -> ~$233. Over budget -
+  which is exactly the lesson the workshop demonstrates.
+- The $1.00 session cost cap is the hard guarantee: <= ~$70 worst case for
+  70 participants even if everyone hammers the high tier.
+
+### Metadata & pre-routing (direct answer to the user's question)
+
+There was NO per-model metadata before; pre-routing decided purely on the
+difficulty score vs. `difficulty_ceiling`. Metadata (description,
+context_window, strengths, good_for_difficulty) is now STORED in the
+catalog and surfaced in `/usage`, but is NOT yet consumed by the router -
+capability-aware routing is now a code change away, not a data-gathering
+exercise. Left as a deliberate follow-up to keep this change reviewable.
+
+### Verified
+
+- `uv run pytest` - 46/46 pass (was 34; +12: new tests/test_models_config.py
+  for YAML pricing/ladder/metadata/cost-guard + loop-stops-at-cap, plus a
+  5th invalid-ladder case).
+- Manual: ladder loads from YAML with provider resolved from catalog;
+  `/usage` renders the ladder, per-model breakdown with strengths, and
+  `$… / $1.00 cap`; `Config.from_env()` boots (env provider/model override
+  + yaml max_tokens/cap defaults).
+- `ruff check` clean on all files this task touched (the 5 remaining
+  findings are pre-existing: bash.py, conversation.py, benchmark/).
+- pricing.json and tiers.json deleted; no code references them (remaining
+  hits were doc comments, updated).
+
+### Follow-ups (not done, on purpose)
+
+- Wire metadata into the routing decision (capability-aware pre-routing).
+- Failed escalation-attempt tokens still counted only in RoutingTracker,
+  not /usage (pre-existing gap).
+- Prices are as-listed today; verify slugs/prices before the workshop -
+  they're a one-line YAML edit each.

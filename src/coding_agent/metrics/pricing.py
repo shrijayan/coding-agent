@@ -1,24 +1,26 @@
 """Cost calculation from token usage, using a hand-maintained pricing table.
 
-Model pricing lives in pricing.json (plain data, not Python constants) so
-adding a new model is a one-line edit, not a code change - same
-philosophy as .env for settings that vary and change over time. We
-deliberately do NOT try to fetch live prices from providers: for a
-workshop with a small, known set of models, a hand-maintained file is
-far simpler than building and trusting a live-pricing integration.
+Model pricing lives in the shared models.yaml catalog (plain data, not
+Python constants) so adding or re-pricing a model is a one-line edit, not
+a code change - same philosophy as .env for settings that vary over time.
+We deliberately do NOT fetch live prices from providers: for a workshop
+with a small, known set of models, a hand-maintained file is far simpler
+than building and trusting a live-pricing integration.
 """
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from coding_agent.metrics.usage import Usage
-
-_PRICING_FILE = Path(__file__).parent / "pricing.json"
+from coding_agent.models_config import (
+    MODELS_FILE,
+    ModelsConfigError,
+    read_models_yaml,
+)
 
 
 class MissingPricingError(RuntimeError):
-    """Raised when a model has no entry in pricing.json.
+    """Raised when a model has no entry in the models.yaml catalog.
 
     Raised at agent startup (see cli.py), not lazily when /usage is
     first checked - the same "fail fast, no silent wrong numbers"
@@ -34,22 +36,36 @@ class ModelPrice:
 
 
 class PricingTable:
-    """Looks up cost-per-token for a model, loaded from pricing.json."""
+    """Looks up cost-per-token for a model, loaded from models.yaml."""
 
     def __init__(self, prices: dict[str, ModelPrice]) -> None:
         self._prices = prices
 
     @classmethod
-    def load(cls) -> "PricingTable":
-        raw = json.loads(_PRICING_FILE.read_text())
-        prices = {
-            model: ModelPrice(
-                input_per_million_usd=entry["input_per_million_usd"],
-                output_per_million_usd=entry["output_per_million_usd"],
+    def load(cls, path: Path | None = None) -> "PricingTable":
+        raw = read_models_yaml(path)
+        catalog = raw.get("models")
+        if not isinstance(catalog, dict):
+            raise ModelsConfigError(
+                "models.yaml must contain a 'models' mapping of "
+                "model -> {input_per_million_usd, output_per_million_usd}."
             )
-            for model, entry in raw.items()
-            if not model.startswith("_")  # "_note"-style keys are metadata, not a model
-        }
+        prices: dict[str, ModelPrice] = {}
+        for model, entry in catalog.items():
+            if not isinstance(entry, dict):
+                raise ModelsConfigError(
+                    f"models.yaml catalog entry for '{model}' must be a mapping."
+                )
+            try:
+                prices[model] = ModelPrice(
+                    input_per_million_usd=float(entry["input_per_million_usd"]),
+                    output_per_million_usd=float(entry["output_per_million_usd"]),
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise ModelsConfigError(
+                    f"models.yaml catalog entry for '{model}' needs numeric "
+                    "'input_per_million_usd' and 'output_per_million_usd'."
+                ) from error
         return cls(prices)
 
     def require(self, model: str) -> None:
@@ -72,7 +88,8 @@ class PricingTable:
         if price is None:
             raise MissingPricingError(
                 f"No pricing configured for model '{model}'. Add an entry "
-                f"to {_PRICING_FILE.name} with input_per_million_usd and "
-                "output_per_million_usd for this exact model string."
+                f"to {MODELS_FILE.name}'s 'models:' catalog with "
+                "input_per_million_usd and output_per_million_usd for this "
+                "exact model string."
             )
         return price
