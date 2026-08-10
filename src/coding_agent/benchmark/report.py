@@ -80,9 +80,16 @@ def _make_tool_observer(instance_id: str) -> ToolCallObserver:
 def _print_summary(results: list[TaskResult], pricing: PricingTable, model: str) -> None:
     resolved_count = sum(1 for result in results if result.resolved)
     total_usage = Usage()
+    usage_by_model: dict[str, Usage] = {}
     for result in results:
         total_usage = total_usage + result.usage
-    total_cost = pricing.cost_for(total_usage, model)
+        for used_model, usage in result.usage_by_model.items():
+            key = used_model or model
+            usage_by_model[key] = usage_by_model.get(key, Usage()) + usage
+    total_cost = sum(
+        pricing.cost_for(usage, used_model)
+        for used_model, usage in usage_by_model.items()
+    )
     total_duration = sum(result.duration_seconds for result in results)
 
     print("--- Benchmark summary ---")
@@ -90,16 +97,32 @@ def _print_summary(results: list[TaskResult], pricing: PricingTable, model: str)
     print(f"Input tokens   : {total_usage.input_tokens:,}")
     print(f"Output tokens  : {total_usage.output_tokens:,}")
     print(f"Total tokens   : {total_usage.total_tokens:,}")
+    if len(usage_by_model) > 1:
+        print("Per model:")
+        for used_model, usage in usage_by_model.items():
+            model_cost = pricing.cost_for(usage, used_model)
+            print(
+                f"  {used_model}: {usage.total_tokens:,} tokens, ${model_cost:.4f}"
+            )
     print(f"Estimated cost : ${total_cost:.4f}")
     print(f"Wall-clock time: {total_duration:.1f}s")
     print()
     print("Per-task:")
     for result in results:
         status = "PASS" if result.resolved else "FAIL"
-        task_cost = pricing.cost_for(result.usage, model)
+        task_cost = _task_cost(result, pricing, model)
         print(
             f"  [{status}] {result.instance_id:30s} "
             f"tokens={result.usage.total_tokens:>7,} "
             f"cost=${task_cost:.4f} "
             f"time={result.duration_seconds:>6.1f}s"
         )
+
+
+def _task_cost(result: TaskResult, pricing: PricingTable, fallback_model: str) -> float:
+    """Priced per model actually used, so routed (cheap-tier) tokens
+    aren't billed at the configured model's rate."""
+    return sum(
+        pricing.cost_for(usage, used_model or fallback_model)
+        for used_model, usage in result.usage_by_model.items()
+    )

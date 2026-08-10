@@ -60,6 +60,7 @@ class AnthropicClient(LLMClient):
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens,
             ),
+            model=self._model,
         )
 
 

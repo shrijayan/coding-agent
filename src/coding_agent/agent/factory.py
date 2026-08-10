@@ -10,6 +10,8 @@ from coding_agent.agent.loop import AgentLoop
 from coding_agent.config import Config
 from coding_agent.llm.base import LLMClient
 from coding_agent.llm.factory import build_llm_client
+from coding_agent.metrics.cost_guard import CostGuard
+from coding_agent.metrics.pricing import PricingTable
 from coding_agent.metrics.usage import UsageTracker
 from coding_agent.optimizations.bundle import OptimizationBundle
 from coding_agent.optimizations.history_policy import DefaultHistoryPolicy
@@ -26,6 +28,7 @@ def build_agent(
     config: Config,
     usage_tracker: UsageTracker,
     optimizations: OptimizationBundle,
+    pricing: PricingTable | None = None,
 ) -> AgentLoop:
     """Assemble an AgentLoop wired up with the given config and optimizations.
 
@@ -33,6 +36,11 @@ def build_agent(
     interactive REPL runs wherever the user launched it from, and the
     benchmark runner changes into each task's sandboxed repo checkout
     before calling this (see benchmark/runner.py).
+
+    Pass `pricing` to enforce the per-session cost cap (config
+    .session_cost_cap_usd); the interactive REPL does, the benchmark
+    deliberately doesn't (a controlled measurement shouldn't be cut off
+    mid-task by a budget guard).
     """
     llm_client: LLMClient = build_llm_client(config)
     if optimizations.wrap_llm_client is not None:
@@ -43,6 +51,10 @@ def build_agent(
         system_prompt = f"{SYSTEM_PROMPT}\n\n{optimizations.system_prompt_suffix}"
 
     history_policy = optimizations.history_policy or DefaultHistoryPolicy()
+
+    cost_guard: CostGuard | None = None
+    if pricing is not None and config.session_cost_cap_usd is not None:
+        cost_guard = CostGuard(pricing, config.session_cost_cap_usd)
 
     tool_registry = ToolRegistry(
         tools=[
@@ -60,4 +72,5 @@ def build_agent(
         max_iterations=config.max_iterations,
         usage_tracker=usage_tracker,
         history_policy=history_policy,
+        cost_guard=cost_guard,
     )

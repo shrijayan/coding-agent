@@ -1,15 +1,34 @@
-"""Loads and validates configuration from environment variables.
+"""Loads and validates configuration from environment variables and the
+shared models.yaml.
 
-Rule of thumb used throughout this file: if required configuration is
-missing or invalid, fail immediately with a clear message. We never
-silently fall back to a made-up default - a wrong default that "just
-works" is much harder to debug later than a loud error on startup.
+Two sources, on purpose:
+
+- **models.yaml** is the source of truth for WHICH model the base agent
+  uses (provider/model/max_tokens), the per-session cost cap, and routing
+  settings - the things a workshop wants everyone to share by default.
+- **.env** holds secrets (API keys) and per-person behavior knobs
+  (iteration caps, timeouts, summary thresholds). Any of the model
+  defaults can still be overridden per-person via the matching AGENT_*
+  env var, so nobody has to edit the shared file to point at their own
+  model.
+
+Rule of thumb used throughout: if required configuration is missing or
+invalid, fail immediately with a clear message. We never silently fall
+back to a made-up default - a wrong default that "just works" is much
+harder to debug later than a loud error on startup.
 """
 
 import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
+
+from coding_agent.models_config import (
+    load_defaults,
+    load_routing_settings,
+    load_session_cost_cap,
+    read_models_yaml,
+)
 
 # Which env var holds the API key for each supported provider. This is
 # fixed program wiring (which key belongs to which provider never
@@ -38,37 +57,130 @@ class Config:
     bash_timeout_seconds: int
     summary_threshold_messages: int
     summary_keep_recent_messages: int
+    routing_ollama_base_url: str
+    routing_quality_gate_enabled: bool
+    session_cost_cap_usd: float | None
+    """Stop making LLM calls once a session's estimated cost crosses this
+    (USD), or None to disable the cap. Sourced from models.yaml so the
+    shared workshop budget guardrail lives with the model config; an
+    individual can override with AGENT_SESSION_COST_CAP_USD."""
+    available_provider_keys: dict[str, str]
+    """Every provider API key that happens to be set, by provider name.
+
+    Only the *selected* provider's key is required (see from_env); this
+    map exists for the hybrid-routing ladder, whose models.yaml may name a
+    second paid provider alongside the main one. Keeping the lookup here
+    means no module outside config.py reads os.environ directly."""
 
     @classmethod
     def from_env(cls) -> "Config":
-        """Load settings from the environment (and a .env file, if present).
+        """Load settings from models.yaml + the environment (and a .env
+        file, if present).
 
-        Only the API key for the *selected* provider is required - e.g.
-        if AGENT_PROVIDER=openrouter, ANTHROPIC_API_KEY is never checked
-        and doesn't need to be set.
+        Model provider/model/max_tokens, the cost cap, and routing
+        settings default from models.yaml; the matching AGENT_* env var
+        overrides any of them if set. Only the API key for the *selected*
+        provider is required - e.g. if the provider resolves to
+        openrouter, ANTHROPIC_API_KEY is never checked.
         """
         load_dotenv()
-        provider = _require_provider()
+        raw = read_models_yaml()
+        defaults = load_defaults(raw)
+        gate_enabled, ollama_base_url = load_routing_settings(raw)
+
+        provider = _resolve_provider(defaults.provider)
         return cls(
             provider=provider,
             api_key=_require_str(_PROVIDER_API_KEY_ENV_VARS[provider]),
-            model=_require_str("AGENT_MODEL"),
-            max_tokens=_require_int("AGENT_MAX_TOKENS"),
+            model=_optional_str("AGENT_MODEL") or defaults.model,
+            max_tokens=_optional_int("AGENT_MAX_TOKENS", defaults.max_tokens),
             max_iterations=_require_int("AGENT_MAX_ITERATIONS"),
             bash_timeout_seconds=_require_int("AGENT_BASH_TIMEOUT_SECONDS"),
             summary_threshold_messages=_require_int("AGENT_SUMMARY_THRESHOLD_MESSAGES"),
             summary_keep_recent_messages=_require_int("AGENT_SUMMARY_KEEP_RECENT_MESSAGES"),
+            routing_ollama_base_url=(
+                _optional_str("AGENT_ROUTING_OLLAMA_BASE_URL") or ollama_base_url
+            ),
+            routing_quality_gate_enabled=_optional_bool(
+                "AGENT_ROUTING_QUALITY_GATE_ENABLED", gate_enabled
+            ),
+            session_cost_cap_usd=_resolve_cost_cap(load_session_cost_cap(raw)),
+            available_provider_keys=_available_provider_keys(),
         )
 
 
-def _require_provider() -> str:
-    value = _require_str("AGENT_PROVIDER").lower()
+def _available_provider_keys() -> dict[str, str]:
+    """Collect whichever provider API keys are actually set.
+
+    Deliberately does NOT require any of them - Config already enforces
+    that the selected provider's key exists. This is best-effort extra
+    information for the routing ladder, so an unset key means "that tier
+    is unavailable", not "fail to start".
+    """
+    found = {}
+    for provider, env_var in _PROVIDER_API_KEY_ENV_VARS.items():
+        value = os.environ.get(env_var)
+        if value:
+            found[provider] = value
+    return found
+
+
+def _resolve_provider(default: str) -> str:
+    """The selected provider: AGENT_PROVIDER if set, else models.yaml's."""
+    value = (_optional_str("AGENT_PROVIDER") or default).lower()
     if value not in _PROVIDER_API_KEY_ENV_VARS:
         supported = ", ".join(sorted(_PROVIDER_API_KEY_ENV_VARS))
         raise MissingConfigError(
-            f"AGENT_PROVIDER must be one of: {supported}. Got: '{value}'."
+            f"Provider must be one of: {supported}. Got: '{value}' "
+            "(from AGENT_PROVIDER or models.yaml 'default.provider')."
         )
     return value
+
+
+def _resolve_cost_cap(yaml_cap: float | None) -> float | None:
+    """The session cost cap: AGENT_SESSION_COST_CAP_USD if set (a number,
+    or 'none'/'off' to disable), else the models.yaml value."""
+    raw = _optional_str("AGENT_SESSION_COST_CAP_USD")
+    if raw is None:
+        return yaml_cap
+    if raw.lower() in {"none", "off", "disabled"}:
+        return None
+    try:
+        cap = float(raw)
+    except ValueError as error:
+        raise MissingConfigError(
+            "AGENT_SESSION_COST_CAP_USD must be a number or 'none', "
+            f"got: '{raw}'"
+        ) from error
+    if cap <= 0:
+        raise MissingConfigError(
+            f"AGENT_SESSION_COST_CAP_USD must be positive (or 'none'), got: {cap}"
+        )
+    return cap
+
+
+def _optional_str(name: str) -> str | None:
+    value = os.environ.get(name)
+    return value if value else None
+
+
+def _optional_int(name: str, default: int) -> int:
+    value = _optional_str(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as error:
+        raise MissingConfigError(
+            f"Environment variable '{name}' must be a whole number, got: '{value}'"
+        ) from error
+
+
+def _optional_bool(name: str, default: bool) -> bool:
+    value = _optional_str(name)
+    if value is None:
+        return default
+    return _parse_bool(name, value)
 
 
 def _require_str(name: str) -> str:
@@ -89,3 +201,21 @@ def _require_int(name: str) -> int:
         raise MissingConfigError(
             f"Environment variable '{name}' must be a whole number, got: '{value}'"
         ) from error
+
+
+# The exact strings we accept for a boolean env var, kept explicit rather
+# than relying on Python's truthiness (which would treat "false" as True).
+_TRUE_VALUES = {"true", "1", "yes", "on"}
+_FALSE_VALUES = {"false", "0", "no", "off"}
+
+
+def _parse_bool(name: str, value: str) -> bool:
+    lowered = value.lower()
+    if lowered in _TRUE_VALUES:
+        return True
+    if lowered in _FALSE_VALUES:
+        return False
+    raise MissingConfigError(
+        f"Environment variable '{name}' must be a boolean "
+        f"(one of: {', '.join(sorted(_TRUE_VALUES | _FALSE_VALUES))}), got: '{value}'"
+    )

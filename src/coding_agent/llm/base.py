@@ -48,6 +48,13 @@ class LLMResponse:
     """Real token counts for this specific call, as reported by the
     provider - never estimated, since a guessed number would quietly
     make every cost comparison in this project meaningless."""
+    model: str = ""
+    """The exact model string that served this call, matching its
+    models.yaml catalog key (e.g. "ollama/qwen2.5-coder:7b", prefix
+    included), so usage can be priced per model. Wrappers that route
+    between models (see optimizations/hybrid_routing.py) overwrite it
+    with whichever tier actually answered. Defaults to "" only so fake
+    clients in tests keep working; every real client sets it."""
 
 
 class LLMClient(ABC):

@@ -1,17 +1,20 @@
-"""Concrete LLMClient for any model hosted on OpenRouter.
+"""Concrete LLMClient for a local, free cheap-tier model served by Ollama.
 
-OpenRouter exposes one API that proxies hundreds of models (OpenAI,
-Google, Meta, Anthropic, ...) behind an OpenAI-compatible Chat
-Completions interface. OpenRouter's own docs recommend using the
-official `openai` Python SDK pointed at their base URL as a drop-in
-replacement - that's what this does, so we get a well-tested SDK
-(error types, retries, etc.) instead of hand-rolling HTTP calls.
+Ollama ships an OpenAI-compatible Chat Completions API at
+http://localhost:11434/v1, so this reuses the already-present `openai`
+SDK pointed at that base URL - exactly the same trick OpenRouterClient
+uses, just aimed at localhost instead. That keeps the cheap tier behind
+the same LLMClient abstraction as every other provider (no LiteLLM, no
+parallel code path), which is what lets the hybrid-routing wrapper treat
+"cheap" and "powerful" as interchangeable LLMClients.
 
-Like AnthropicClient, this file's job is translating between our
-neutral Message format (llm/messages.py) and this provider's wire
-format. The two formats differ from Anthropic's in one notable way:
-a tool result here is its own message with role="tool", not a content
-block folded into a user message.
+The two provider-specific jobs are the same as OpenRouterClient's:
+translate our neutral Message format (llm/messages.py) to/from the
+OpenAI wire format, and turn the SDK's exceptions into a clean LLMError.
+The one Ollama-specific concern is that a local Ollama simply not
+running is the *common* failure here (unlike a hosted API), so an
+unreachable endpoint must surface as an ordinary LLMError the caller can
+recover from - never an uncaught crash mid-demo.
 """
 
 import json
@@ -23,15 +26,24 @@ from coding_agent.llm.base import LLMClient, LLMError, LLMResponse
 from coding_agent.llm.messages import Message, TextPart, ToolResultPart, ToolUsePart
 from coding_agent.metrics.usage import Usage
 
-_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# Ollama ignores the API key, but the openai SDK requires a non-empty one.
+_OLLAMA_API_KEY = "ollama"
+
+# Config carries the model as e.g. "ollama/qwen2.5-coder:7b" so the same
+# string can key the models.yaml catalog; Ollama's own API wants just the
+# bare model name, so this prefix is stripped before the call.
+_MODEL_PREFIX = "ollama/"
 
 
-class OpenRouterClient(LLMClient):
-    """Sends conversations to whichever model OpenRouter is configured to use."""
+class OllamaClient(LLMClient):
+    """Sends conversations to a local Ollama model and normalizes the response."""
 
-    def __init__(self, api_key: str, model: str, max_tokens: int) -> None:
-        self._client = openai.OpenAI(api_key=api_key, base_url=_OPENROUTER_BASE_URL)
-        self._model = model
+    def __init__(self, base_url: str, model: str, max_tokens: int) -> None:
+        self._client = openai.OpenAI(api_key=_OLLAMA_API_KEY, base_url=base_url)
+        # Keep the prefixed form too: it's the models.yaml catalog key
+        # reported in LLMResponse.model, while the API wants the bare name.
+        self._model_id = model
+        self._model = _strip_prefix(model)
         self._max_tokens = max_tokens
 
     def send(
@@ -71,14 +83,18 @@ class OpenRouterClient(LLMClient):
             tool_calls=tool_calls,
             wants_tool_use=bool(tool_calls),
             usage=_extract_usage(response.usage),
-            model=self._model,
+            model=self._model_id,
         )
 
 
+def _strip_prefix(model: str) -> str:
+    return model.removeprefix(_MODEL_PREFIX)
+
+
 def _extract_usage(usage: Any) -> Usage:
-    """Some models proxied through OpenRouter occasionally omit usage data
-    entirely - treat that as zero rather than crashing, since a missing
-    number is a data-completeness gap, not something worth failing over."""
+    """Real token counts from Ollama's response - never estimated (see
+    LLMResponse.usage). A missing usage block is treated as zero rather
+    than crashing, same as OpenRouterClient."""
     if usage is None:
         return Usage()
     return Usage(input_tokens=usage.prompt_tokens, output_tokens=usage.completion_tokens)
@@ -104,10 +120,10 @@ def _to_openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
 
 
 def _to_openai_turns(message: Message) -> list[dict[str, Any]]:
-    """One neutral Message can expand into several OpenAI-style messages:
-    unlike Anthropic, a tool result here needs its own role="tool"
-    message rather than being folded into the user turn.
-    """
+    """One neutral Message can expand into several OpenAI-style messages -
+    identical translation to OpenRouterClient's, since Ollama speaks the
+    same OpenAI wire format (tool results are their own role="tool"
+    messages, not folded into a user turn)."""
     text = "\n".join(part.text for part in message.parts if isinstance(part, TextPart))
     tool_uses = [part for part in message.parts if isinstance(part, ToolUsePart)]
     tool_results = [part for part in message.parts if isinstance(part, ToolResultPart)]
@@ -138,20 +154,22 @@ def _to_openai_turns(message: Message) -> list[dict[str, Any]]:
 
 
 def _describe(error: openai.APIError) -> str:
-    """Turn an OpenAI-SDK-shaped error into one short, human-readable line.
+    """Turn an openai-SDK error into one short, human-readable line.
 
-    Note this SDK's .body is already the unwrapped inner error object
-    (e.g. {"message": "...", "code": 401}), unlike the anthropic SDK
-    whose .body is the full raw response with an "error" key still
-    nested inside it - verified by triggering a real 401 against
-    OpenRouter rather than assuming the two SDKs behave identically.
+    The most likely error here is Ollama not running at all, which the
+    SDK raises as an APIConnectionError (no status code) - phrase that
+    case as an actionable hint rather than a raw stack trace.
     """
+    status_code = getattr(error, "status_code", None)
     reason = error.message
     body = getattr(error, "body", None)
     if isinstance(body, dict) and body.get("message"):
         reason = str(body["message"])
 
-    status_code = getattr(error, "status_code", None)
     if status_code is not None:
-        return f"OpenRouter returned an error ({status_code}): {reason}"
-    return f"Could not reach OpenRouter: {reason}"
+        return f"Ollama returned an error ({status_code}): {reason}"
+    return (
+        f"Could not reach Ollama at its configured base URL ({reason}). "
+        "Is `ollama serve` running and the cheap model pulled "
+        "(e.g. `ollama pull qwen2.5-coder:7b`)?"
+    )

@@ -53,7 +53,10 @@ src/coding_agent/
 ├── __init__.py           # exposes main() - the package's only entry point
 ├── cli.py                 # REPL: reads input, wires everything together, prints output
 ├── cli_args.py             # parses --enable and --benchmark flags
-├── config.py               # loads + validates env vars (fail-fast, no hidden defaults)
+├── config.py               # loads + validates config: models.yaml defaults + env (fail-fast)
+├── models.yaml              # SINGLE SOURCE OF TRUTH for models: default provider/model,
+│                            #   per-model price + metadata catalog, routing ladder, cost cap
+├── models_config.py         # loads/validates models.yaml (used by config, pricing, tiers)
 ├── system_prompt.py         # the agent's system prompt text
 ├── agent/
 │   ├── conversation.py     # message history, in our own provider-agnostic format
@@ -67,8 +70,8 @@ src/coding_agent/
 │   └── openrouter_client.py # concrete LLMClient that calls OpenRouter (OpenAI-compatible API)
 ├── metrics/
 │   ├── usage.py             # Usage (token counts) + UsageTracker (accumulates across a session)
-│   ├── pricing.py            # PricingTable - cost = tokens x pricing.json, fail-fast if a model is unpriced
-│   └── pricing.json           # hand-maintained {model: {input_per_million_usd, output_per_million_usd}}
+│   ├── pricing.py            # PricingTable - cost = tokens x models.yaml catalog, fail-fast if unpriced
+│   └── cost_guard.py          # CostGuard - soft per-session spend cap (protects a shared budget)
 ├── commands/
 │   ├── base.py              # SlashCommand interface (mirrors tools/base.py's Tool)
 │   ├── registry.py           # SlashCommandRegistry - looks up and runs commands by name
@@ -192,23 +195,73 @@ recipe, so a third is additive, not a rewrite:
    the whole plumbing reaches the real API and errors come back clean),
    then with a real key and a prompt that exercises every tool.
 
+## Model config (models.yaml)
+
+`src/coding_agent/models.yaml` is the single source of truth for **which**
+models the agent uses. It's plain data (loaded via `models_config.py`), so
+swapping a model, re-pricing one, reordering the routing ladder, or editing
+the cost cap is a one-line edit with no code change. Secrets never live
+here - API keys stay in `.env`. Four sections:
+
+- `default:` - the base agent's provider/model/max_tokens when routing is
+  off. `AGENT_PROVIDER`/`AGENT_MODEL`/`AGENT_MAX_TOKENS` in `.env` override
+  these per-person, so nobody has to edit the shared file to point at their
+  own model.
+- `session_cost_cap_usd:` - the soft per-session spend cap (see below).
+- `models:` - the catalog: `input_per_million_usd`/`output_per_million_usd`
+  **and** `metadata` (description, context_window, strengths,
+  good_for_difficulty) for every model named anywhere in the file. Every
+  model used (base default AND every routing tier) MUST have an entry or the
+  agent refuses to start. Metadata is stored context for `/usage` and for a
+  future capability-aware router - it is NOT yet consumed by routing (which
+  still decides on `difficulty_ceiling`).
+- `routing:` - the hybrid-routing ladder (cheapest first) plus
+  `quality_gate_enabled` / `ollama_base_url`. Each tier names a `model` from
+  the catalog; its provider is resolved from that catalog entry (or set
+  `provider: inner` to reuse AGENT_MODEL).
+
 ## Token/cost tracking
 
 `metrics/usage.py`'s `UsageTracker` records real token counts (never
 estimated - see `LLMResponse.usage`'s docstring) after every model call,
-and `metrics/pricing.py`'s `PricingTable` turns those into a dollar
-estimate using `metrics/pricing.json` - a hand-maintained file, not
-Python constants, so adding a model you plan to use is a one-line data
-edit. If your model isn't in that file, the agent refuses to start
-(`MissingPricingError`) rather than silently showing `$0.00` - add an
-entry with `input_per_million_usd`/`output_per_million_usd` for the
-exact string you put in `AGENT_MODEL`.
+*attributed per model* (`by_model`), and `metrics/pricing.py`'s
+`PricingTable` turns those into a dollar estimate using the `models.yaml`
+catalog. If a model you use has no catalog entry, the agent refuses to
+start (`MissingPricingError`) rather than silently showing `$0.00` - add
+an entry under `models:` with `input_per_million_usd`/
+`output_per_million_usd` for the exact model string.
+
+**Session cost cap.** `metrics/cost_guard.py`'s `CostGuard` enforces
+`session_cost_cap_usd`: before each model call, if the session's estimated
+cost has crossed the cap, `AgentLoop` stops and returns a notice instead of
+spending more. It's a *soft* cap (checked before each call, so a session
+overshoots by at most one in-flight call) whose purpose is protecting a
+shared, fixed budget across many participants. The interactive REPL enforces
+it (cli.py passes `pricing` into `build_agent`); the benchmark deliberately
+does not (a controlled measurement shouldn't be cut off mid-task). Override
+per-person with `AGENT_SESSION_COST_CAP_USD` (a number, or `none`).
 
 Type `/usage` in any session to see the running total for that session:
 turns, LLM calls, tool calls, tokens, cost, and which optimizations are
 currently enabled. This is the tool every optimization gets judged
 with - see the next section.
+Besides `/usage`, every turn also prints a one-line **per-turn summary**
+right after the agent's answer (see `cli.py`). What's on it depends on
+the mode in use, and each mode shows only the data that actually applies
+to it:
 
+- base agent (no flags): `↳ <model> · <n> LLM calls · <tokens> tokens ·
+  <wall-clock>ms · $<cost>` (`_format_turn_summary`)
+- `--enable hybrid-routing`: the routing line instead - path, tier/model,
+  difficulty score, quality-gate outcome, model latency, cost
+  (`_format_routing_summary`) - because difficulty and gate results only
+  exist when routing is active.
+
+If you build an optimization that introduces its own mode with its own
+extra signals (the way hybrid-routing has difficulty/gate data), give it
+its own per-turn line in `cli.py` showing only the fields relevant to
+that mode - don't leave the user with no per-turn feedback, and don't
+pad a generic line with fields that are meaningless in your mode.
 ## How to add a new optimization
 
 This project is the shared **Base Agent** for a workshop where several

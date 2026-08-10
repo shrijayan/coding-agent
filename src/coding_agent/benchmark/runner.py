@@ -48,6 +48,7 @@ class TaskResult:
     instance_id: str
     resolved: bool
     usage: Usage
+    usage_by_model: dict[str, Usage]
     user_messages: int
     llm_calls: int
     tool_calls: int
@@ -119,6 +120,7 @@ def _result(
         instance_id=task.instance_id,
         resolved=resolved,
         usage=usage_tracker.total,
+        usage_by_model=dict(usage_tracker.by_model),
         user_messages=usage_tracker.user_messages,
         llm_calls=usage_tracker.llm_calls,
         tool_calls=usage_tracker.tool_calls,

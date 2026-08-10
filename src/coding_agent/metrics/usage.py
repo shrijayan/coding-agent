@@ -40,13 +40,21 @@ class UsageTracker:
     user_messages: int = 0
     llm_calls: int = 0
     tool_calls: int = 0
+    by_model: dict[str, Usage] = field(default_factory=dict)
+    """Token usage per model that actually served calls - with routing
+    enabled a session can span several models with different prices, so
+    a single merged total can't be priced correctly on its own. Keyed by
+    LLMResponse.model (a models.yaml catalog key); "" if a client didn't say."""
+    calls_by_model: dict[str, int] = field(default_factory=dict)
 
     def record_user_message(self) -> None:
         self.user_messages += 1
 
-    def record_llm_call(self, usage: Usage) -> None:
+    def record_llm_call(self, usage: Usage, model: str) -> None:
         self.llm_calls += 1
         self.total = self.total + usage
+        self.by_model[model] = self.by_model.get(model, Usage()) + usage
+        self.calls_by_model[model] = self.calls_by_model.get(model, 0) + 1
 
     def record_tool_call(self) -> None:
         self.tool_calls += 1
