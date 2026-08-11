@@ -104,7 +104,7 @@ def test_cost_guard_exceeded_at_cap():
     # 1M in + 1M out on the high tier ($2 + $6 = $8) blows a $0.10 cap.
     tracker.record_llm_call(
         Usage(input_tokens=1_000_000, output_tokens=1_000_000),
-        "qwen/qwen3.8-max",
+        "z-ai/glm-5.2",
     )
     assert guard.exceeded(tracker)
     assert "cap of $0.10 reached" in guard.notice(tracker)
@@ -124,7 +124,7 @@ def test_agent_loop_stops_when_cap_already_exceeded():
 
     tracker = UsageTracker()
     tracker.record_llm_call(
-        Usage(input_tokens=1_000_000, output_tokens=1_000_000), "qwen/qwen3.8-max"
+        Usage(input_tokens=1_000_000, output_tokens=1_000_000), "z-ai/glm-5.2"
     )
     loop = AgentLoop(
         llm_client=ExplodingClient(),

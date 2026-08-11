@@ -30,6 +30,13 @@ from coding_agent.models_config import ModelsConfigError, read_models_yaml
 # parallel copy of the main provider settings.
 INNER_PROVIDER = "inner"
 
+# The default ladder key, and the alternate one used when the base provider
+# is Ollama - so `--enable hybrid-routing` can run fully offline on local
+# models. Keeping this mapping in one place means both call sites (cli.py's
+# pricing check and the routing wrapper) pick the same ladder for a provider.
+_DEFAULT_TIERS_KEY = "tiers"
+_PROVIDER_TIERS_KEYS = {"ollama": "ollama_tiers"}
+
 
 class InvalidTierConfigError(RuntimeError):
     """Raised when the routing ladder in models.yaml isn't usable."""
@@ -50,8 +57,14 @@ class RoutingTier:
         return self.provider == INNER_PROVIDER
 
 
-def load_tiers(path: Path | None = None) -> list[RoutingTier]:
-    """Load and validate the ladder from models.yaml, cheapest first."""
+def load_tiers(path: Path | None = None, *, provider: str | None = None) -> list[RoutingTier]:
+    """Load and validate the ladder from models.yaml, cheapest first.
+
+    `provider` selects which ladder to read: an Ollama base provider uses the
+    `routing.ollama_tiers` list (a free, offline local ladder) if present, so
+    routing can be exercised without any paid key; every other provider uses
+    the default `routing.tiers`.
+    """
     try:
         raw = read_models_yaml(path)
     except ModelsConfigError as error:
@@ -63,10 +76,11 @@ def load_tiers(path: Path | None = None) -> list[RoutingTier]:
             "models.yaml must contain a 'routing' mapping with a 'tiers' list."
         )
 
-    entries = routing.get("tiers")
+    tiers_key = _tiers_key_for(routing, provider)
+    entries = routing.get(tiers_key)
     if not isinstance(entries, list) or not entries:
         raise InvalidTierConfigError(
-            "models.yaml 'routing.tiers' must be a non-empty list, "
+            f"models.yaml 'routing.{tiers_key}' must be a non-empty list, "
             "ordered cheapest/weakest first."
         )
 
@@ -74,6 +88,21 @@ def load_tiers(path: Path | None = None) -> list[RoutingTier]:
     tiers = [_parse_tier(entry, catalog, index) for index, entry in enumerate(entries)]
     _validate_ladder(tiers)
     return tiers
+
+
+def _tiers_key_for(routing: dict[str, Any], provider: str | None) -> str:
+    """Which routing.<key> list to use for this provider.
+
+    Falls back to the default ladder when the provider has no dedicated list
+    (or its list isn't defined), so an unset/removed override degrades to the
+    shared ladder rather than failing.
+    """
+    if provider is None:
+        return _DEFAULT_TIERS_KEY
+    key = _PROVIDER_TIERS_KEYS.get(provider.lower())
+    if key and isinstance(routing.get(key), list):
+        return key
+    return _DEFAULT_TIERS_KEY
 
 
 def _parse_tier(

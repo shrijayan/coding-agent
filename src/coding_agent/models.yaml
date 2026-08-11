@@ -24,8 +24,23 @@
 # ---------------------------------------------------------------------------
 default:
   provider: openrouter
-  model: thinkingmachines/inkling-small
+  model: minimax/minimax-m3
   max_tokens: 4096
+
+# ---------------------------------------------------------------------------
+# Per-provider base-model overrides. `default:` above decides the committed
+# default provider (openrouter); this block supplies the right base model when
+# you switch the base provider via AGENT_PROVIDER without also setting
+# AGENT_MODEL. When AGENT_PROVIDER selects a provider listed here and
+# AGENT_MODEL is left unset, its model here is used as the base agent's model.
+# This is what lets `AGENT_PROVIDER=anthropic` (uses claude-sonnet-5) or
+# `AGENT_PROVIDER=ollama` (no OpenRouter key needed) Just Work, so a user can
+# bring their own provider - or exercise prompt caching and routing fully
+# offline - without editing this shared file.
+# ---------------------------------------------------------------------------
+provider_models:
+  anthropic: claude-sonnet-5
+  ollama: ollama/qwen2.5-coder:7b
 
 # ---------------------------------------------------------------------------
 # Session spend guardrail. The agent stops making LLM calls once a session's
@@ -44,8 +59,10 @@ session_cost_cap_usd: 1.00
 # data-gathering exercise.
 # ---------------------------------------------------------------------------
 models:
-  # --- OpenRouter routing ladder (cheap -> high), prices as listed on
-  #     openrouter.ai. These three are the workshop ladder. ---
+  # --- OpenRouter workshop ladder (low -> medium -> high), prices as listed
+  #     on openrouter.ai. These three are the ONLY supported OpenRouter
+  #     presets: low = deepseek/deepseek-v4-flash-0731,
+  #     medium = minimax/minimax-m3, high = z-ai/glm-5.2. ---
   deepseek/deepseek-v4-flash-0731:
     provider: openrouter
     input_per_million_usd: 0.09
@@ -54,62 +71,50 @@ models:
       description: >-
         Sparse MoE (13B active / 284B total) tuned for coding, reasoning,
         and agent workflows. The cheap workhorse that should answer the
-        bulk of easy/routine requests.
+        bulk of easy/routine requests. (Low tier.)
       context_window: 1050000
       strengths: [low_cost, fast, routine_edits, boilerplate]
       good_for_difficulty: [easy]
 
-  thinkingmachines/inkling-small:
+  minimax/minimax-m3:
     provider: openrouter
     input_per_million_usd: 0.45
     output_per_million_usd: 1.20
     metadata:
       description: >-
-        Open-weight multimodal MoE (12B active / 276B total). A balanced
-        mid tier for multi-step reasoning, debugging, and agentic tool use
-        that the cheap tier struggles with.
+        Balanced mid tier for multi-step reasoning, debugging, and agentic
+        tool use that the cheap tier struggles with. The workshop's default
+        OpenRouter model. (Medium tier.)
       context_window: 524000
       strengths: [reasoning, debugging, tool_use, refactoring]
       good_for_difficulty: [medium]
 
-  qwen/qwen3.8-max:
+  z-ai/glm-5.2:
     provider: openrouter
     input_per_million_usd: 2.00
     output_per_million_usd: 6.00
     metadata:
       description: >-
-        Flagship Qwen reasoning model. The strong tier reserved for the
-        hardest requests - architecture, tricky concurrency/algorithms,
-        deep debugging - where a wrong cheap answer costs more than the
-        model does.
+        Strong tier reserved for the hardest requests - architecture, tricky
+        concurrency/algorithms, deep debugging - where a wrong cheap answer
+        costs more than the model does. (High tier.)
       context_window: 1000000
       strengths: [architecture, hard_debugging, algorithms, long_context]
       good_for_difficulty: [hard]
 
-  # --- Kept for compatibility with non-workshop setups (direct Anthropic,
-  #     local Ollama). Not part of the default ladder. ---
+  # --- Kept for direct-Anthropic setups (AGENT_PROVIDER=anthropic) and for
+  #     the free, offline local-testing ladder (Ollama, see ollama_tiers
+  #     below). Not part of the OpenRouter ladder. ---
   claude-sonnet-5:
     provider: anthropic
     # Anthropic introductory rate ($2 in / $10 out), valid through
     # 2026-08-31. After that the standard rate is $3 in / $15 out - update
-    # both claude-sonnet-5 entries when it lapses. See
+    # this entry when it lapses. See
     # https://docs.claude.com/en/docs/about-claude/pricing
     input_per_million_usd: 2.00
     output_per_million_usd: 10.00
     metadata:
       description: Frontier Anthropic model, used when AGENT_PROVIDER=anthropic.
-      context_window: 200000
-      strengths: [reasoning, architecture, long_context]
-      good_for_difficulty: [hard]
-
-  anthropic/claude-sonnet-5:
-    provider: openrouter
-    # Same model reached via OpenRouter - separate entry because the slug
-    # differs and per-route pricing can differ too.
-    input_per_million_usd: 2.00
-    output_per_million_usd: 10.00
-    metadata:
-      description: Claude Sonnet 5 via OpenRouter's slug.
       context_window: 200000
       strengths: [reasoning, architecture, long_context]
       good_for_difficulty: [hard]
@@ -121,10 +126,30 @@ models:
     input_per_million_usd: 0.00
     output_per_million_usd: 0.00
     metadata:
-      description: Local Qwen coder via Ollama - free, for offline/dev use.
+      description: Local Qwen2.5 Coder 7B via Ollama - free cheap tier for local testing.
       context_window: 32768
       strengths: [free, offline, code_generation]
       good_for_difficulty: [easy]
+
+  ollama/qwen3.6:latest:
+    provider: ollama
+    input_per_million_usd: 0.00
+    output_per_million_usd: 0.00
+    metadata:
+      description: Local Qwen3.6 via Ollama - free strong tier for local testing.
+      context_window: 131072
+      strengths: [free, offline, reasoning, refactoring, tool_use]
+      good_for_difficulty: [hard]
+
+  ollama/llama3.1:8b:
+    provider: ollama
+    input_per_million_usd: 0.00
+    output_per_million_usd: 0.00
+    metadata:
+      description: Local Llama 3.1 8B via Ollama - free mid tier for local testing.
+      context_window: 131072
+      strengths: [free, offline, reasoning, tool_use]
+      good_for_difficulty: [medium]
 
 # ---------------------------------------------------------------------------
 # The hybrid-routing ladder, ordered cheapest/weakest FIRST to strongest
@@ -151,8 +176,23 @@ routing:
       model: deepseek/deepseek-v4-flash-0731
       difficulty_ceiling: 0.45
     - name: mid
-      model: thinkingmachines/inkling-small
+      model: minimax/minimax-m3
       difficulty_ceiling: 0.75
     - name: high
-      model: qwen/qwen3.8-max
+      model: z-ai/glm-5.2
+      difficulty_ceiling: 1.0
+  # Alternate ladder used when the base provider is Ollama (AGENT_PROVIDER=
+  # ollama), so `--enable hybrid-routing` can be tested fully offline with no
+  # OpenRouter key. Same shape and rules as `tiers` above; the loader picks
+  # this list instead of `tiers` when the selected provider is ollama. Three
+  # rungs mapped onto the three chat models pulled locally.
+  ollama_tiers:
+    - name: cheap
+      model: ollama/qwen2.5-coder:7b
+      difficulty_ceiling: 0.45
+    - name: mid
+      model: ollama/llama3.1:8b
+      difficulty_ceiling: 0.75
+    - name: high
+      model: ollama/qwen3.6:latest
       difficulty_ceiling: 1.0

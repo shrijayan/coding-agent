@@ -71,6 +71,22 @@ def load_defaults(raw: dict[str, Any]) -> ModelDefaults:
     )
 
 
+def load_provider_models(raw: dict[str, Any]) -> dict[str, str]:
+    """Per-provider base-model overrides (provider name -> model string).
+
+    Optional block: absent means an empty map. Lets `AGENT_PROVIDER=<name>`
+    pick the right base model without also setting AGENT_MODEL (e.g. selecting
+    ollama for local testing), while `default:` still owns the committed
+    default provider/model.
+    """
+    block = raw.get("provider_models")
+    if block is None:
+        return {}
+    if not isinstance(block, dict):
+        raise ModelsConfigError("models.yaml 'provider_models' must be a mapping.")
+    return {str(provider).lower(): str(model) for provider, model in block.items()}
+
+
 def load_session_cost_cap(raw: dict[str, Any]) -> float | None:
     """The per-session spend cap in USD, or None if disabled/absent."""
     value = raw.get("session_cost_cap_usd")

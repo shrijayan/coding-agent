@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from coding_agent.models_config import (
     load_defaults,
+    load_provider_models,
     load_routing_settings,
     load_session_cost_cap,
     read_models_yaml,
@@ -39,6 +40,13 @@ _PROVIDER_API_KEY_ENV_VARS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
 }
+
+# Providers reached at a base URL with no API key (local inference servers).
+# Selectable as the base provider (e.g. AGENT_PROVIDER=ollama) so prompt
+# caching and routing can be tested fully offline, with no paid key at all.
+_LOCAL_PROVIDERS = {"ollama"}
+
+_SUPPORTED_PROVIDERS = set(_PROVIDER_API_KEY_ENV_VARS) | _LOCAL_PROVIDERS
 
 
 class MissingConfigError(RuntimeError):
@@ -91,8 +99,12 @@ class Config:
         provider = _resolve_provider(defaults.provider)
         return cls(
             provider=provider,
-            api_key=_require_str(_PROVIDER_API_KEY_ENV_VARS[provider]),
-            model=_optional_str("AGENT_MODEL") or defaults.model,
+            api_key=_resolve_api_key(provider),
+            model=(
+                _optional_str("AGENT_MODEL")
+                or load_provider_models(raw).get(provider)
+                or defaults.model
+            ),
             max_tokens=_optional_int("AGENT_MAX_TOKENS", defaults.max_tokens),
             max_iterations=_require_int("AGENT_MAX_ITERATIONS"),
             bash_timeout_seconds=_require_int("AGENT_BASH_TIMEOUT_SECONDS"),
@@ -128,13 +140,22 @@ def _available_provider_keys() -> dict[str, str]:
 def _resolve_provider(default: str) -> str:
     """The selected provider: AGENT_PROVIDER if set, else models.yaml's."""
     value = (_optional_str("AGENT_PROVIDER") or default).lower()
-    if value not in _PROVIDER_API_KEY_ENV_VARS:
-        supported = ", ".join(sorted(_PROVIDER_API_KEY_ENV_VARS))
+    if value not in _SUPPORTED_PROVIDERS:
+        supported = ", ".join(sorted(_SUPPORTED_PROVIDERS))
         raise MissingConfigError(
             f"Provider must be one of: {supported}. Got: '{value}' "
             "(from AGENT_PROVIDER or models.yaml 'default.provider')."
         )
     return value
+
+
+def _resolve_api_key(provider: str) -> str:
+    """The API key for the selected provider - required for paid providers,
+    but empty (and never checked) for keyless local ones like Ollama, so
+    `AGENT_PROVIDER=ollama` starts with no key set at all."""
+    if provider in _LOCAL_PROVIDERS:
+        return ""
+    return _require_str(_PROVIDER_API_KEY_ENV_VARS[provider])
 
 
 def _resolve_cost_cap(yaml_cap: float | None) -> float | None:

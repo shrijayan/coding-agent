@@ -245,7 +245,7 @@ def build_live_tiers(
     configured ladder (e.g. no paid key yet) still runs on whatever rungs
     are available, which is the graceful-degradation rule from AGENTS.md.
     """
-    ladder = tiers if tiers is not None else load_tiers()
+    ladder = tiers if tiers is not None else load_tiers(provider=config.provider)
     live: list[LiveTier] = []
     warnings: list[str] = []
 

@@ -11,10 +11,15 @@ AGENTS.md's "How to add a new optimization".
 
 from collections.abc import Callable
 
-from coding_agent.optimizations import conversation_summary, hybrid_routing
+from coding_agent.optimizations import (
+    cache_friendly,
+    conversation_summary,
+    hybrid_routing,
+)
 from coding_agent.optimizations.bundle import OptimizationBundle
 
 AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
     "conversation-summary": conversation_summary.build,
     "hybrid-routing": hybrid_routing.build,
+    "cache-friendly-prompts": cache_friendly.build,
 }

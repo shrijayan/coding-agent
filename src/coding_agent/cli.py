@@ -11,6 +11,7 @@ from typing import Any
 
 from coding_agent.agent.factory import build_agent
 from coding_agent.cli_args import parse_args
+from coding_agent.commands.cache_command import PromptCacheCommand
 from coding_agent.commands.metrics_command import RoutingMetricsCommand
 from coding_agent.commands.registry import SlashCommandRegistry
 from coding_agent.commands.usage_command import UsageCommand
@@ -23,9 +24,13 @@ from coding_agent.models_config import (
     load_catalog_metadata,
     read_models_yaml,
 )
-from coding_agent.optimizations import hybrid_routing
+from coding_agent.optimizations import cache_friendly, hybrid_routing
 from coding_agent.optimizations.available import AVAILABLE_OPTIMIZATIONS
 from coding_agent.optimizations.bundle import ConflictingOptimizationsError
+from coding_agent.optimizations.prompt_cache.metrics import (
+    PromptCacheRecord,
+    PromptCacheTracker,
+)
 from coding_agent.optimizations.registry import (
     OptimizationRegistry,
     UnknownOptimizationError,
@@ -35,6 +40,7 @@ from coding_agent.optimizations.routing.tiers import InvalidTierConfigError, loa
 
 _EXIT_COMMANDS = {"exit", "quit"}
 _HYBRID_ROUTING = "hybrid-routing"
+_CACHE_FRIENDLY = "cache-friendly-prompts"
 
 
 def run() -> None:
@@ -82,7 +88,7 @@ def run() -> None:
         # Fail fast now (not mid-demo) if any ladder tier has no pricing
         # entry - /metrics derives cost from it, same rule as /usage.
         try:
-            tiers = load_tiers()
+            tiers = load_tiers(provider=config.provider)
             for tier in tiers:
                 pricing.require(tier.model or config.model)
         except (MissingPricingError, InvalidTierConfigError) as error:
@@ -92,6 +98,13 @@ def run() -> None:
         routing_tracker = hybrid_routing.get_tracker()
         for warning in hybrid_routing.get_warnings():
             print(f"warning> {warning}")
+
+    # /cache only exists when cache-friendly construction is actually enabled -
+    # it reports on the same tracker the wrapper (built above via the bundle)
+    # records into, one row per send().
+    cache_tracker: PromptCacheTracker | None = None
+    if _CACHE_FRIENDLY in args.enabled_optimizations:
+        cache_tracker = cache_friendly.get_tracker()
 
     commands = [
         UsageCommand(
@@ -109,6 +122,8 @@ def run() -> None:
     # optimization bundle) records into.
     if routing_tracker is not None:
         commands.append(RoutingMetricsCommand(tracker=routing_tracker, pricing=pricing))
+    if cache_tracker is not None:
+        commands.append(PromptCacheCommand(tracker=cache_tracker))
 
     command_registry = SlashCommandRegistry(commands=commands)
 
@@ -139,6 +154,7 @@ def run() -> None:
         # so we summarize the records it produced rather than printing from
         # inside the wrapper on every send().
         routing_mark = len(routing_tracker.records) if routing_tracker else 0
+        cache_mark = len(cache_tracker.records) if cache_tracker else 0
         # Same snapshot idea for the plain-mode turn summary: diff the
         # usage tracker before/after rather than instrumenting the loop.
         calls_before = usage_tracker.llm_calls
@@ -163,6 +179,34 @@ def run() -> None:
             )
         if summary:
             print(f"{summary}\n")
+
+        # Cache-friendly construction is its own mode with its own signals
+        # (reuse %, cacheable ratio), so it prints its own line - in addition
+        # to whichever summary above, since it can be enabled alongside routing.
+        if cache_tracker is not None:
+            cache_summary = _format_cache_summary(cache_tracker.records[cache_mark:])
+            if cache_summary:
+                print(f"{cache_summary}\n")
+
+
+def _format_cache_summary(records: list[PromptCacheRecord]) -> str:
+    """One compact annotation for a turn's cache-friendly prompt construction.
+
+    Shows only what this mode adds - stable-prefix size and fingerprint, average
+    prefix reuse vs the previous request, and the structurally cacheable share -
+    none of which the plain or routing summaries carry. A turn spans many sends
+    (the tool loop), so reuse is averaged across the sends it produced.
+    """
+    if not records:
+        return ""
+    latest = records[-1]
+    avg_reuse = sum(record.reuse_pct for record in records) / len(records)
+    return (
+        f"  \u21b3 cache: {len(records)} sends \u00b7 "
+        f"stable {latest.stable_bytes:,}B ({latest.stable_hash[:8]}) \u00b7 "
+        f"reuse {avg_reuse * 100:.0f}% \u00b7 "
+        f"cacheable {latest.cache_friendly_ratio * 100:.0f}%"
+    )
 
 
 def _format_turn_summary(

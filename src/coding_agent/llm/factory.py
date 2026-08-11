@@ -48,10 +48,20 @@ def build_llm_client(config: Config) -> LLMClient:
     """Construct the LLMClient for whichever provider Config selected.
 
     config.provider is already validated by Config.from_env() to be one
-    of the API-key providers, so a lookup failure here would mean a real
+    of the supported providers, so a lookup failure here would mean a real
     bug (a provider added to Config but not here) - let it raise loudly
     rather than silently falling back to some default provider.
+
+    A keyless local provider (e.g. ollama) is reached at a base URL with
+    no API key, so it takes a different constructor than the API-key ones.
     """
+    if config.provider in _LOCAL_PROVIDERS:
+        return OllamaClient(
+            base_url=config.routing_ollama_base_url,
+            model=config.model,
+            max_tokens=config.max_tokens,
+        )
+
     client_class = _API_KEY_BUILDERS[config.provider]
     return client_class(
         api_key=config.api_key,

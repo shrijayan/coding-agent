@@ -1014,3 +1014,325 @@ placeholders - find-and-replace in `slides/00-intro.js` (+ `90-closing.js`).
 - Repo URL on the closing slide is `github.com/<your-org>/coding-agent`.
 - When the 3 BUILDING techniques land, flip their pills to LIVE and add a
   notebook cue + code slide (same pattern as summarization/routing).
+
+---
+
+## [2026-08-11] Cache-friendly prompt construction (`--enable cache-friendly-prompts`)
+
+New optimization: a deterministic, layered prompt-construction pipeline that
+maximizes prompt-cache reuse across any OpenRouter-supported model, provider
+agnostically (no `cache_control` / vendor APIs in the core). Plugs in through the
+same first-class hook as routing - `OptimizationBundle(wrap_llm_client=...)` -
+so the agent loop and every provider client are untouched.
+
+### What it does
+
+On every `LLMClient.send()` the wrapper (`optimizations/cache_friendly.py`)
+rebuilds the outgoing prompt through a small, reusable pipeline and forwards a
+deterministic version of it to the wrapped client:
+
+- **`prompt_cache/layers.py`** - `PromptLayer` + `LayerTier` (STABLE /
+  SEMI_STABLE / DYNAMIC). Categorization per the brief: STABLE = system prompt,
+  tool/MCP defs, guidelines, repo metadata; SEMI_STABLE = summary, active files,
+  task context; DYNAMIC = latest message, tool results, logs.
+- **`prompt_cache/serializer.py`** - `PromptSerializer`: canonical JSON
+  (`sort_keys`, compact separators, `ensure_ascii=False`), whitespace
+  normalization, SHA-256 of a section. Identical content -> byte-identical output.
+- **`prompt_cache/builder.py`** - `PromptBuilder` + `BuiltPrompt`: turns raw
+  `send()` inputs into ordered layers (stable-before-dynamic guaranteed by a
+  stable sort), sorts tools by name + recursively key-sorts schemas, normalizes
+  the system string, and **memoizes the stable section** so it's reused, not
+  regenerated, until system/tools actually change (`stable_recomputes` proves it).
+- **`prompt_cache/metrics.py`** - `PromptCacheTracker` + `PromptCacheRecord`
+  (mirrors `routing/metrics.py`): stable-prefix hash + size, per-tier bytes,
+  prefix **reuse %** (longest common canonical-byte prefix vs the previous send /
+  current size), cache-friendly ratio (stable bytes / total), and real input
+  tokens.
+- **`prompt_cache/provider_adapter.py`** - `ProviderCacheAdapter` Protocol +
+  `NoOpProviderCacheAdapter` default + `PreparedRequest`. The pluggable seam: a
+  future Anthropic `cache_control` adapter drops in here (constructor-injected)
+  without touching builder/serializer/core.
+
+### Token honesty
+
+Followed the hard rule (never estimate tokens): the only token figure is the
+provider's **real** `usage.input_tokens`; stable-prefix length, reuse %, and
+cache-friendly ratio are deterministic **byte** measurements, never a tokenizer
+guess. Messages are never reordered (only STABLE layers are canonicalized), so
+correctness and the real provider cache prefix are preserved.
+
+### Surfaced
+
+- `/cache` slash command (`commands/cache_command.py`, mirrors `/metrics`):
+  session stable-hash stability, avg prefix reuse, cacheable ratio, latest
+  byte breakdown, real input tokens.
+- Per-turn CLI line `_format_cache_summary` in `cli.py` (its own mode line,
+  printed in addition to the routing/plain line since it composes with routing).
+- One-line registration in `optimizations/available.py`. `build()` is
+  zero-config (no new required env vars), so fail-fast startup is unaffected.
+
+### Presentation + notebook
+
+- New slide module `presentation/slides/35-cache-friendly-prompts.js` (sep ->
+  layered-stack concept + reuse bignum -> builder/serializer/seam how -> notebook
+  cue), registered in `index.html` after 30, ThoughtWorks theme classes reused.
+  Slide 30's plan callout flipped from "building now" to point at this now-live
+  sibling technique.
+- Notebook: new "Optimization 3 - Cache-friendly prompt construction" section
+  (concept md + `run_scenario` + `compare` + a `/cache` report cell) plus a
+  `cache_report()` method on `WorkshopSession` (mirrors `routing_report()`);
+  `opt_cache` added to the combined `compare(...)` and the scoreboard `runs`
+  list; "Coming soon" prompt-caching bullet updated to reflect the shipped
+  groundwork.
+
+### Verified
+
+- New suite `tests/test_prompt_cache.py` (21 tests): determinism across
+  builders, tool-order + dict-key-order independence, whitespace normalization,
+  stable-before-dynamic invariant, stable hash unaffected by conversation growth,
+  no dynamic ids in the stable prefix, stable-section reuse (memo) + recompute on
+  change, prefix reuse growth, tracker aggregates, no-op adapter pass-through,
+  wrapper forwards normalized prompt + records real tokens, `build()` bundle
+  wiring, `/cache` command, serializer canonicalization.
+- Full suite: 67 passed. `ruff check` clean on all new/changed files (the 5
+  remaining repo lint hits are all pre-existing, in files not touched here).
+- `node --check` passes on the new + edited slide JS; notebook re-parses as
+  valid JSON with 0 python-cell syntax errors; registry resolves
+  `cache-friendly-prompts` and composes with `conversation-summary` /
+  `hybrid-routing` without conflict.
+
+### Follow-ups (not done, on purpose)
+
+- The actual provider-side `cache_control` adapter (Anthropic et al.) - the seam
+  is in place (`ProviderCacheAdapter`), but no concrete adapter ships yet.
+- End-to-end run against a real OpenRouter key (needs a key); logic is covered
+  by in-memory fakes in the test suite.
+
+---
+
+## [2026-08-11] Ollama as a keyless base provider (offline testing) 
+
+Goal: let someone without an OpenRouter key test prompt caching and hybrid
+routing today, fully offline on local Ollama models, WITHOUT changing the
+committed default (still `openrouter` in models.yaml) - so nothing has to be
+reverted once the key arrives. Ollama already existed as a *routing-tier*
+provider (`OllamaClient`, `build_provider_client`); this promotes it to a
+selectable *base* provider and gives routing a local ladder.
+
+What changed:
+- `models.yaml`:
+  - New `provider_models:` block (provider -> base model). Used only when
+    `AGENT_PROVIDER=<name>` selects a provider listed here AND `AGENT_MODEL`
+    is unset, so `AGENT_PROVIDER=ollama` picks up `ollama/qwen2.5-coder:7b`
+    without also setting `AGENT_MODEL`. `default:` still owns the committed
+    default provider/model (openrouter).
+  - Two new catalog entries: `ollama/llama3.1:8b`, `ollama/qwen2.5-coder:14b`
+    (both free, $0.00, with metadata), alongside the existing 7b entry.
+  - New `routing.ollama_tiers` ladder (cheap 7b / mid llama3.1:8b / high 14b) -
+    an alternate to `routing.tiers`, same shape/rules.
+- `models_config.py`: `load_provider_models(raw)` (optional block -> map).
+- `optimizations/routing/tiers.py`: `load_tiers(path=None, *, provider=None)`.
+  When `provider == "ollama"` and `routing.ollama_tiers` exists, that ladder is
+  used; every other provider (and `provider=None`) uses `routing.tiers`. The
+  mapping lives in one place (`_PROVIDER_TIERS_KEYS`) so both call sites agree.
+- `config.py`: `ollama` is now a valid base provider (`_LOCAL_PROVIDERS`), and
+  keyless - `_resolve_api_key` returns `""` for local providers instead of
+  requiring an API key. Base model resolves via
+  `AGENT_MODEL` -> `provider_models[provider]` -> `default.model`.
+- `llm/factory.py`: `build_llm_client` builds an `OllamaClient` (base URL from
+  `routing.ollama_base_url`, no key) when the base provider is local.
+- `cli.py` + `hybrid_routing.build_live_tiers`: both call
+  `load_tiers(provider=config.provider)` so the pricing check and the live
+  ladder pick the same (ollama) tiers.
+- `.env.example`: documented `AGENT_PROVIDER=ollama` (keyless) + the ollama
+  base-model line.
+
+How to run (fully offline, no key). Note the user's personal `.env` pins
+`AGENT_MODEL=claude-sonnet-5`, and an explicit `AGENT_MODEL` correctly wins
+over `provider_models`, so pass an ollama model (or blank it) when switching:
+- Base / prompt caching:
+  `AGENT_PROVIDER=ollama AGENT_MODEL=ollama/qwen2.5-coder:7b uv run coding-agent
+   --enable cache-friendly-prompts`
+- Hybrid routing (local ladder):
+  `AGENT_PROVIDER=ollama AGENT_MODEL=ollama/qwen2.5-coder:7b uv run coding-agent
+   --enable hybrid-routing`
+Needs `ollama serve` running and the three models pulled.
+
+Verified: full suite 67 passed (unchanged - all existing `load_tiers()` calls
+default to `provider=None` -> the openrouter ladder). Config smoke test with
+`AGENT_PROVIDER=ollama`: provider=ollama, api_key='', base client=OllamaClient,
+base + all three ladder models priced, and `load_tiers()` with no provider
+still returns the openrouter ladder.
+
+### Follow-ups (not done, on purpose)
+
+- No runtime `/provider` slash command - the user chose startup selection only
+  (a mid-session switch is moot here since the app can't start without the
+  selected provider's key, and ollama is keyless so it starts fine).
+- No end-to-end run against a live Ollama (sandbox blocks localhost:11434);
+  wiring verified via config/ladder resolution + the existing in-memory tests.
+
+### [2026-08-11] Follow-up - reconciled ollama_tiers with pulled models + live E2E
+
+Sandbox was lifted, so `ollama list` finally worked and the models chosen up
+front (`llama3.1:8b`, `qwen2.5-coder:14b`) weren't actually pulled - only
+`qwen2.5-coder:7b` and `qwen3.6:latest` (plus embedding-only `bge-m3` /
+`nomic-embed-text`, unusable for chat). Corrected `models.yaml` to reality:
+- Catalog now lists the real chat models (`ollama/qwen2.5-coder:7b`,
+  `ollama/qwen3.6:latest`, and `ollama/llama3.1:8b` once the user pulled it).
+- `routing.ollama_tiers` is cheap `qwen2.5-coder:7b` (0.45) / mid `llama3.1:8b`
+  (0.75) / high `qwen3.6:latest` (1.0).
+
+Verified live against the running Ollama (not just wiring): base+cache turn
+answered on `qwen2.5-coder:7b` with the cache line printed; routing turn scored
+difficulty, routed cheap, quality gate PASS, `/metrics` correct, no skipped
+tiers; the mid client (`llama3.1:8b`) returns real token usage on a direct
+send. Full suite still 67 passed.
+
+### [2026-08-11] REPL colors + always-visible per-send routing detail
+
+Two cli.py-only presentation changes (no behavior/logic change elsewhere):
+- Color scheme (ANSI, `cli.py`): agent answer green, user prompt/input white,
+  every auxiliary line yellow (turn/routing/cache summaries, tool-call lines,
+  startup warnings, and all slash-command output incl. /usage, /metrics,
+  /cache), errors red. Gated on `sys.stdout.isatty()` (`_USE_COLOR`) via tiny
+  `_seq()`/`_color()` helpers, so piped/redirected output and the benchmark
+  stay escape-code-free. The white input color is opened on the `you>` prompt
+  and reset right after `input()` returns.
+- Routing summary now always shows difficulty + answering model, even on
+  multi-send (tool-loop) turns. `_format_single_record` was refactored into
+  `_routing_detail` (the marker-less detail body), reused by both the
+  single-send line and a new numbered per-send breakdown under a header
+  roll-up:
+    ↳ routing: 2 sends · 2 direct_powerful · 14497ms · $0.0000
+        1. direct_powerful · mid/llama3.1:8b · difficulty 0.65 · 8200ms · $0.0000
+        2. direct_powerful · mid/llama3.1:8b · difficulty 0.65 · 6297ms · $0.0000
+  (Prompted by confusion that the old multi-send roll-up hid difficulty/model.
+  Reminder: `direct_powerful` = pre-router skipped the cheap tier and started
+  higher, NOT necessarily the top tier.)
+
+Verified: `_format_routing_summary` renders the header + numbered per-send
+lines; `_color` emits the right ANSI codes when forced on; ruff clean on
+cli.py; full suite 67 passed.
+
+### [2026-08-11] Presentation revamp: XConf branding, auditorium readability
+
+Full pass over `presentation/` to align the deck with the official
+Thoughtworks XConf template and make it readable from the back of a large
+auditorium (presentation-only change; no agent code touched):
+- Official palette applied exactly (Mist #EDF1F3, Onyx #000000, Flamingo
+  #F2617A, Wave #003D4F, Turmeric #CC850A, Jade #6B9E78, Sapphire #47A1AD,
+  Amethyst #634F7D) in `css/theme-thoughtworks.css`; XConf logo assets
+  (`assets/xconf-logo{,-white}.png`) in the persistent chrome, and the "X"
+  sculpture image on the cover + every technique separator.
+- Readability: bigger base type, concept-first slides; all large code panels
+  replaced with flow diagrams / icon rows / callouts (`agent-loop`, `cf-how`,
+  `build-your-own`, ...). Dense slides split instead of shrunk.
+- Animations simplified: deck-wide fade transition, no per-bullet fragments
+  on concept/theory slides; step-by-step fragments retained ONLY on the
+  optimization showcase slides (sum-lab, pc-concept, cf-concept,
+  route-ladder, cw-concept, lp-concept).
+- HUD (Context tokens / Session cost) is now opt-in per slide (`hud: true`
+  in deck.js) and appears only on those 7 optimization demos - hidden on all
+  theory/branding slides.
+- Fixed slide 9 (sum-lab) formatting and a systematic 52px vertical overflow
+  on six `.slide-head + .split` slides: `.pad` is now a flex column and
+  `.split` flexes into the remaining height instead of `height: 100%`
+  (`css/layouts.css`).
+
+Verified in the browser via scripted walk of all 31 slides: no console
+errors, no broken images, zero overflow on every fully-revealed slide, HUD
+visible only on the 7 demo slides, sum-lab/route-ladder state machines
+correct forward AND backward.
+
+---
+
+## [2026-08-12] Notebook as a thin client: project-managed deps, BYO provider, standardized models
+
+Refactored `notebooks/optimizing_llm_apps.ipynb` (and a little supporting
+code) so the notebook behaves like a lightweight client for the repo
+instead of duplicating its configuration.
+
+Dependency installation (notebook Step 2):
+- Removed the hardcoded `DEPS = [...]` pip list. The notebook now `cd`s
+  into the clone and runs `pip install -e ".[notebook]"`, so ALL
+  dependencies come from the repo's own `pyproject.toml`. When repo deps
+  change, users just re-pull and re-run - nothing to edit in the notebook.
+- Added a `[project.optional-dependencies] notebook` extra (pandas,
+  matplotlib) in `pyproject.toml` so even the notebook-only viz libs are
+  project-managed, not hardcoded. Regenerated `uv.lock` (`uv lock`);
+  `uv sync --extra notebook` resolves cleanly.
+- Verified the exact `pip install -e ".[notebook]"` command works with
+  plain pip (Colab-like) in a fresh venv: PEP 660 editable install via the
+  uv_build backend succeeds and `import coding_agent`/`pandas`/`matplotlib`
+  all resolve.
+
+Bring-your-own provider (notebook Steps 3-4, provider-agnostic):
+- Collapsed the old "OpenRouter key" + "pin provider=openrouter" cells into
+  ONE configuration cell exposing `PROVIDER` / `API_KEY` / `MODEL`. A
+  `PROVIDERS` registry (env var, default model, tier presets, keys URL)
+  makes adding a provider a one-entry change - openrouter and anthropic
+  ship today. Key loading is provider-aware (explicit -> Colab secret named
+  after the provider's env var -> env -> hidden prompt) and only the
+  selected provider's key is required. The rest of the notebook reads
+  `AGENT_PROVIDER`/`AGENT_MODEL` and adapts; no implementation code changes
+  to switch providers.
+- The underlying codebase already supported anthropic (config env-var map,
+  llm factory builder, priced `claude-sonnet-5`). Added `anthropic:
+  claude-sonnet-5` to `provider_models:` in `models.yaml` so
+  `AGENT_PROVIDER=anthropic` with a blank `AGENT_MODEL` resolves to the
+  right base model (mirrors the existing ollama pattern).
+
+Standardized the three OpenRouter presets (requirement 4):
+- `models.yaml` OpenRouter catalog + `routing.tiers` are now exactly:
+  low `deepseek/deepseek-v4-flash-0731`, medium `minimax/minimax-m3`,
+  high `z-ai/glm-5.2`. Replaced `thinkingmachines/inkling-small` (was the
+  default + mid tier -> now medium `minimax/minimax-m3`, and the new base
+  default) and `qwen/qwen3.8-max` (high -> `z-ai/glm-5.2`); removed the
+  extra `anthropic/claude-sonnet-5` OpenRouter slug. Kept prices so tier
+  ordering + the cost-cap test math ($2+$6=$8 on the high tier) still hold.
+- Updated `tests/test_models_config.py` (two `qwen/qwen3.8-max` refs ->
+  `z-ai/glm-5.2`) and `.env.example`'s example model list. Full suite green
+  (67 passed).
+
+hybrid-routing is OpenRouter/Ollama-based; the notebook's routing section
+now notes anthropic users should skip that one cell (its tiers would be
+unavailable) - the other optimizations are provider-agnostic.
+
+Verified: all 67 tests pass; notebook JSON parses (40 cells); all 19 code
+cells compile; Config.from_env resolves correctly for openrouter
+(blank/low/high/custom-slug) and anthropic (blank -> claude-sonnet-5);
+routing ladder fully priced.
+
+### [2026-08-12] Presentation polish: vector logos, dark separators, auto choreography
+
+Follow-up pass on `presentation/` after review feedback, drawing on the
+"Engineering the Harness" XConf deck (dark Wave slides, huge Bitter serif,
+minimal accent-bar dividers) as the reference:
+- X sculpture now appears ONCE (the cover). All seven separators redesigned
+  reference-style: dark Wave background, short accent bar (per-technique
+  color via `--sep-accent`), huge centered serif title, pill + flag meta row.
+- Logo resolution fixed at the root: the XConf logo only exists in the
+  template PDF as a 600x317 raster, so both it and the /thoughtworks wordmark
+  were vector-traced (uv + potracer) into 2-color SVGs with light/dark
+  variants (`assets/{xconf,tw}-logo{,-white}.svg`). Chrome, cover and thanks
+  slides now use them; the blurry PNGs were deleted. Gotchas: potracer traces
+  the mask complement (invert before tracing), and the extracted XConf JPEG
+  has flattened-black background so the wave letters must be isolated by
+  blue-channel signature, not darkness.
+- Slide 9 overlap actually fixed: `.sumlab`/`.ladder` needed
+  `grid-template-rows: 100%` (implicit auto rows let the stream spill past
+  the container into the caption), lab height 410px, stepline pushed down
+  (26px margin) and given `min-height`.
+- Auto entrance choreography in `animations.css`, keyed on `section.present`
+  (no clicks): separators tell a bar->title->meta story; flow-diagram nodes
+  walk left-to-right and the feedback arrow keeps cycling; icon rows, cards,
+  stacks, presenter cards and recap rows stagger in; sum-lab chat messages
+  land one-by-one; ladder shows gauge then rungs cheapest-first. Keyframes
+  are from-only + `backwards` fill so entrances never fight state
+  transitions or fragment visibility; `prefers-reduced-motion` disables all.
+
+Verified via scripted walk of all 31 fully-revealed slides: no console
+errors, no broken/missing assets, zero overflow, HUD gating still correct,
+sculpture only on the cover, slide-9 stream clip 0-1px with clear gap to
+the caption line.
