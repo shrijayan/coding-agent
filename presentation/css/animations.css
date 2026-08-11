@@ -1,81 +1,186 @@
 /* =========================================================================
    Motion + animated showcases.
-   Generic keyframes live at the top. Below are the two data-state driven
-   visuals that js/deck.js steps through: the summarization LAB and the
-   routing LADDER. Both animate purely from a [data-state] attribute so
-   reveal's forward/back navigation stays perfectly in sync.
+   POLICY: general slides fade in as a whole (no per-bullet clicking).
+   Detailed step-by-step fragments are reserved for the OPTIMIZATION
+   TECHNIQUE showcases below (summarization lab, routing ladder, pruning,
+   loop guard), where the build-up is the explanation.
    ========================================================================= */
 
 @keyframes tw-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.35; transform: scale(0.7); }
 }
-@keyframes tw-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-6px); }
-}
-@keyframes tw-dash {
-  to { stroke-dashoffset: -14; }
-}
 @keyframes tw-ring {
   0%   { box-shadow: 0 0 0 0 rgba(242,97,122,0.5); }
   100% { box-shadow: 0 0 0 16px rgba(242,97,122,0); }
 }
 
-/* reveal fragment helper: rise + fade (nicer default than reveal's) */
-.reveal .fragment.rise { transform: translateY(14px); opacity: 0; transition: all 0.45s cubic-bezier(.2,.7,.2,1); }
-.reveal .fragment.rise.visible { transform: none; opacity: 1; }
+/* whole-slide entrance: content drifts up softly when the slide appears */
+@keyframes tw-slide-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.reveal .slides > section.present .pad { animation: tw-slide-in 0.55s cubic-bezier(.2,.7,.2,1) both; }
+
+/* =======================================================================
+   AUTO ENTRANCE CHOREOGRAPHY - no clicks needed.
+   When a slide becomes .present its building blocks stagger in on their
+   own (~1s total), so the audience watches the structure assemble and
+   then sees the whole picture. Purely additive: fragments still work.
+   ======================================================================= */
+@keyframes tw-rise {
+  /* no "to": each element settles at its own natural style, so entrance
+     never fights state transitions (dimmed rungs, folding msgs, fragments) */
+  from { opacity: 0; transform: translateY(16px); }
+}
+@keyframes tw-pop {
+  0%  { opacity: 0; transform: translateY(10px) scale(0.96); }
+  70% { transform: translateY(-2px) scale(1.005); }
+}
+@keyframes tw-bar-grow {
+  from { transform: scaleX(0); }
+}
+@keyframes tw-spin-pulse {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50%      { transform: rotate(-180deg) scale(1.15); }
+}
+
+/* separators: bar draws, then title, context line, meta - a mini story */
+section.present .separator .bar   { animation: tw-bar-grow 0.5s cubic-bezier(.2,.7,.2,1) backwards; transform-origin: left center; }
+section.present .separator .idx   { animation: tw-rise 0.5s 0.15s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .separator h1     { animation: tw-rise 0.55s 0.25s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .separator p      { animation: tw-rise 0.55s 0.4s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .separator .sep-meta { animation: tw-rise 0.55s 0.55s cubic-bezier(.2,.7,.2,1) backwards; }
+
+/* flow diagrams: nodes + arrows appear left-to-right, walking the pipeline */
+section.present .flow > * { animation: tw-pop 0.45s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .flow > :nth-child(1) { animation-delay: 0.10s; }
+section.present .flow > :nth-child(2) { animation-delay: 0.22s; }
+section.present .flow > :nth-child(3) { animation-delay: 0.34s; }
+section.present .flow > :nth-child(4) { animation-delay: 0.46s; }
+section.present .flow > :nth-child(5) { animation-delay: 0.58s; }
+section.present .flow > :nth-child(6) { animation-delay: 0.70s; }
+section.present .flow > :nth-child(7) { animation-delay: 0.82s; }
+section.present .flow > :nth-child(8) { animation-delay: 0.94s; }
+section.present .flow > :nth-child(9) { animation-delay: 1.06s; }
+/* the feed-back arrow keeps cycling afterwards - the loop IS the point */
+.flow .arrow.cycle { display: inline-flex; }
+section.present .flow .arrow.cycle { animation: tw-pop 0.45s 0.94s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .flow .arrow.cycle span { display: inline-block; animation: tw-spin-pulse 2.6s 1.6s ease-in-out infinite; }
+
+/* icon rows, cards, layer stacks, presenter cards, recap rows: stagger in */
+section.present .icon-rows > .icon-row,
+section.present .card-grid > .tw-card,
+section.present .stack-sm > *,
+section.present .presenters > .presenter,
+section.present table.recap tbody tr { animation: tw-rise 0.5s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .icon-rows > :nth-child(1), section.present .card-grid > :nth-child(1),
+section.present .stack-sm > :nth-child(1), section.present .presenters > :nth-child(1),
+section.present table.recap tbody tr:nth-child(1) { animation-delay: 0.15s; }
+section.present .icon-rows > :nth-child(2), section.present .card-grid > :nth-child(2),
+section.present .stack-sm > :nth-child(2), section.present .presenters > :nth-child(2),
+section.present table.recap tbody tr:nth-child(2) { animation-delay: 0.28s; }
+section.present .icon-rows > :nth-child(3), section.present .card-grid > :nth-child(3),
+section.present .stack-sm > :nth-child(3), section.present .presenters > :nth-child(3),
+section.present table.recap tbody tr:nth-child(3) { animation-delay: 0.41s; }
+section.present .icon-rows > :nth-child(4), section.present .card-grid > :nth-child(4),
+section.present .stack-sm > :nth-child(4),
+section.present table.recap tbody tr:nth-child(4) { animation-delay: 0.54s; }
+section.present .icon-rows > :nth-child(5), section.present .card-grid > :nth-child(5),
+section.present .stack-sm > :nth-child(5),
+section.present table.recap tbody tr:nth-child(5) { animation-delay: 0.67s; }
+
+/* chat stream: messages land one by one, like a conversation replaying */
+section.present .sumlab .stream > .msg { animation: tw-rise 0.4s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .sumlab .stream > .msg:nth-child(2) { animation-delay: 0.10s; }
+section.present .sumlab .stream > .msg:nth-child(3) { animation-delay: 0.18s; }
+section.present .sumlab .stream > .msg:nth-child(4) { animation-delay: 0.26s; }
+section.present .sumlab .stream > .msg:nth-child(5) { animation-delay: 0.34s; }
+section.present .sumlab .stream > .msg:nth-child(6) { animation-delay: 0.42s; }
+section.present .sumlab .stream > .msg:nth-child(7) { animation-delay: 0.50s; }
+section.present .sumlab .stream > .msg:nth-child(8) { animation-delay: 0.58s; }
+section.present .sumlab .stream > .msg:nth-child(9) { animation-delay: 0.66s; }
+section.present .sumlab .side > * { animation: tw-rise 0.5s 0.5s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .sumlab .side > :nth-child(2) { animation-delay: 0.65s; }
+
+/* routing ladder: gauge first, then the rungs stack up cheapest-first */
+section.present .ladder .meter { animation: tw-rise 0.5s 0.1s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .ladder .rungs > .rung { animation: tw-rise 0.45s cubic-bezier(.2,.7,.2,1) backwards; }
+section.present .ladder .rungs > .rung:nth-child(1) { animation-delay: 0.30s; }
+section.present .ladder .rungs > .rung:nth-child(2) { animation-delay: 0.45s; }
+section.present .ladder .rungs > .rung:nth-child(3) { animation-delay: 0.60s; }
+
+/* notebook hand-off cue: one gentle pop once the slide settles */
+section.present .notebook-cue { animation: tw-pop 0.5s 0.35s cubic-bezier(.2,.7,.2,1) backwards; }
+
+/* reduced motion: everything appears instantly */
+@media (prefers-reduced-motion: reduce) {
+  .reveal .slides > section.present .pad,
+  section.present .separator .bar, section.present .separator .idx,
+  section.present .separator h1, section.present .separator p,
+  section.present .separator .sep-meta,
+  section.present .flow > *, section.present .flow .arrow.cycle span,
+  section.present .icon-rows > .icon-row, section.present .card-grid > .tw-card,
+  section.present .stack-sm > *, section.present .presenters > .presenter,
+  section.present table.recap tbody tr,
+  section.present .sumlab .stream > .msg, section.present .sumlab .side > *,
+  section.present .ladder .meter, section.present .ladder .rungs > .rung,
+  section.present .notebook-cue { animation: none; }
+}
 
 /* stepline: a single caption slot where current-visible steps swap in place.
-   All steps stack on top of each other so opacity:0 ones don't shift layout. */
-.reveal .stepline { position: relative; height: 2.6em; }
+   Used ONLY on optimization showcases. Sits clear BELOW the visual. */
+.reveal .stepline { position: relative; min-height: 2.8em; margin-top: 26px !important; }
 .reveal .stepline > .fragment { position: absolute; left: 0; right: 0; top: 0; }
-.reveal .stepline .fragment b { color: var(--tw-teal-900); }
+.reveal .stepline .fragment b { color: var(--tw-wave); }
 .reveal section.dark .stepline .fragment b { color: #fff; }
 
 /* =======================================================================
-   SUMMARIZATION LAB
-   Left: growing conversation history.  Middle: the summarizer LLM call.
-   Right: compacted context (running summary + only the recent messages).
-   States: 0 short history · 1 grown/expensive · 2 summarizing · 3 compacted
+   SUMMARIZATION LAB  (optimization showcase - keeps its step animation)
+   Left: the conversation we re-send every call. Right: the summarizer +
+   before/after readout. States: 1 grown · 2 summarizing · 3 compacted
    ======================================================================= */
 .sumlab {
   display: grid;
-  grid-template-columns: 1.42fr 0.68fr;
-  gap: 22px;
+  grid-template-columns: 1.35fr 0.65fr;
+  /* explicit row: implicit auto rows size to CONTENT and let the message
+     stream spill past the box (the slide-9 overlap) */
+  grid-template-rows: 100%;
+  gap: 24px;
   align-items: stretch;
-  height: 384px;
+  height: 410px;
   margin-top: 6px;
 }
-.sumlab .lane { display: flex; flex-direction: column; min-width: 0; }
+.sumlab .lane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .sumlab .lane-title {
+  flex: 0 0 auto;
   font-size: 0.62em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--tw-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
 }
 .sumlab .lane-title .badge {
-  font-family: var(--tw-mono); font-size: 0.92em; color: var(--tw-teal-900);
-  background: var(--tw-card); border-radius: 999px; padding: 2px 9px; letter-spacing: 0;
+  font-family: var(--tw-mono); font-size: 0.92em; color: var(--tw-wave);
+  background: var(--tw-card); border-radius: 999px; padding: 3px 10px; letter-spacing: 0;
   transition: background 0.5s ease, color 0.5s ease;
 }
-.sumlab[data-state="3"] .lane-title .badge { background: #d9f0e5; color: #1f7a4d; }
+.sumlab[data-state="3"] .lane-title .badge { background: var(--tint-jade); color: #33682c; }
 .sumlab .stream {
-  position: relative; flex: 1; overflow: hidden;
-  border: 1px solid var(--tw-hair); border-radius: 10px; background: var(--tw-card-2);
-  padding: 12px; display: flex; flex-direction: column; gap: 7px;
+  flex: 1; min-height: 0; overflow: hidden;
+  border: 1px solid var(--tw-hair); border-radius: 12px; background: var(--tw-card-2);
+  padding: 11px 14px; display: flex; flex-direction: column; gap: 6px;
   transition: box-shadow 0.5s ease;
 }
-.sumlab[data-state="3"] .stream { box-shadow: inset 0 0 0 2px rgba(71,160,173,0.42); }
+.sumlab[data-state="3"] .stream { box-shadow: inset 0 0 0 3px rgba(71,161,173,0.45); }
 
 /* a chat bubble */
 .msg {
-  border-radius: 8px; padding: 7px 10px; font-size: 0.6em; line-height: 1.3;
-  max-width: 92%; max-height: 60px; transition: all 0.6s cubic-bezier(.2,.7,.2,1);
+  border-radius: 9px; padding: 8px 12px; font-size: 0.66em; line-height: 1.3;
+  max-width: 88%; max-height: 64px; transition: all 0.6s cubic-bezier(.2,.7,.2,1);
   transform-origin: top center;
 }
-.msg .who { font-weight: 700; font-size: 0.82em; opacity: 0.7; margin-bottom: 2px; display: block; }
+.msg .who { font-weight: 700; font-size: 0.8em; opacity: 0.7; margin-bottom: 2px; display: block; }
 .msg.user { background: #fff; border: 1px solid var(--tw-hair); align-self: flex-start; }
-.msg.asst { background: var(--tw-teal-900); color: #eaf4f6; align-self: flex-end; }
-.msg.tool { background: #fff5e6; border: 1px solid #f0d8a8; color: #6b4e12; font-family: var(--tw-mono); font-size: 0.52em; align-self: flex-start; }
+.msg.asst { background: var(--tw-wave); color: #eaf4f6; align-self: flex-end; }
+.msg.tool { background: var(--tint-turmeric); border: 1px solid rgba(204,133,10,0.35); color: #6b4e12; font-family: var(--tw-mono); font-size: 0.56em; align-self: flex-start; }
 
 /* the "old" messages get dimmed while summarizing, then folded away */
 .sumlab[data-state="2"] .stream .old { opacity: 0.28; filter: grayscale(0.6); transform: scale(0.97); }
@@ -86,91 +191,99 @@
 
 /* running summary card takes the old messages' place at state 3 */
 .sumlab .summary-card {
-  border: 1.5px dashed var(--tw-coral); background: #fff;
-  border-radius: 8px; padding: 9px 11px; font-size: 0.58em; line-height: 1.32; color: var(--tw-ink-soft);
+  border: 2px dashed var(--tw-flamingo); background: #fff;
+  border-radius: 9px; padding: 10px 12px; font-size: 0.62em; line-height: 1.35; color: var(--tw-ink-soft);
   max-height: 0; opacity: 0; overflow: hidden; transform: translateY(-6px);
   transition: all 0.6s cubic-bezier(.2,.7,.2,1);
+  padding-top: 0; padding-bottom: 0; border-width: 0;
 }
 .sumlab .summary-card .tag {
-  font-weight: 700; color: var(--tw-coral-600); font-size: 0.9em; display: block; margin-bottom: 3px;
+  font-weight: 700; color: var(--tw-flamingo); font-size: 0.9em; display: block; margin-bottom: 3px;
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.sumlab[data-state="3"] .summary-card { max-height: 160px; opacity: 1; transform: none; margin-bottom: 3px; }
+.sumlab[data-state="3"] .summary-card {
+  max-height: 180px; opacity: 1; transform: none; margin-bottom: 3px;
+  padding: 10px 12px; border-width: 2px;
+}
 
-/* -------- side panel: the summarizer node + a before/after readout -------- */
-.sumlab .side { display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+/* -------- side panel: summarizer node + before/after readout -------- */
+.sumlab .side { display: flex; flex-direction: column; gap: 14px; justify-content: flex-start; padding-top: 32px; }
 .sumlab .summarizer {
   border: 2px solid var(--tw-hair); background: #fff; border-radius: 14px;
-  padding: 14px 12px; display: flex; align-items: center; gap: 11px; transition: all 0.4s ease;
+  padding: 16px 14px; display: flex; align-items: center; gap: 12px; transition: all 0.4s ease;
 }
-.sumlab .summarizer .em { font-size: 1.7em; line-height: 1; }
-.sumlab .summarizer .lb { font-size: 0.62em; font-weight: 700; color: var(--tw-muted); line-height: 1.25; }
-.sumlab .summarizer .lb b { color: var(--tw-ink); display: block; font-size: 1.15em; }
+.sumlab .summarizer .em { font-size: 1.6em; line-height: 1; color: var(--tw-wave); }
+.sumlab .summarizer .lb { font-size: 0.62em; font-weight: 600; color: var(--tw-muted); line-height: 1.3; }
+.sumlab .summarizer .lb b { color: var(--tw-ink); display: block; font-size: 1.2em; margin-bottom: 2px; }
 .sumlab[data-state="2"] .summarizer {
-  border-color: var(--tw-coral); animation: tw-ring 1s ease-out infinite; transform: scale(1.03);
+  border-color: var(--tw-flamingo); animation: tw-ring 1s ease-out infinite; transform: scale(1.03);
 }
-.sumlab[data-state="2"] .summarizer .lb { color: var(--tw-coral-600); }
+.sumlab[data-state="2"] .summarizer .lb { color: var(--tw-flamingo); }
 
-.sumlab .ba { display: flex; flex-direction: column; gap: 8px; }
+.sumlab .ba { display: flex; flex-direction: column; }
 .sumlab .ba .row {
-  display: flex; align-items: center; justify-content: space-between;
-  border-radius: 9px; padding: 10px 13px; font-size: 0.62em; transition: all 0.5s ease;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border-radius: 10px; padding: 12px 15px; font-size: 0.62em; margin-bottom: 10px;
+  transition: all 0.5s ease;
 }
-.sumlab .ba .row .lab { font-weight: 600; }
-.sumlab .ba .row .v { font-family: var(--tw-mono); font-weight: 700; }
-.sumlab .ba .before { background: #fdeef1; color: var(--tw-coral-600); }
-.sumlab .ba .after  { background: var(--tw-card); color: var(--tw-teal-900); opacity: 0.45; }
-.sumlab .ba .cost   { background: #fff6e6; color: #9a6a00; opacity: 0; transform: translateY(-4px); }
+.sumlab .ba .row:last-child { margin-bottom: 0; }
+.sumlab .ba .row .lab { font-weight: 700; }
+.sumlab .ba .row .v { font-family: var(--tw-mono); font-weight: 700; white-space: nowrap; }
+.sumlab .ba .before { background: var(--tint-flamingo); color: #b03a51; }
+.sumlab .ba .after  { background: var(--tint-sapphire); color: var(--tw-wave); opacity: 0.45; }
+.sumlab .ba .cost {
+  background: var(--tint-turmeric); color: #8a5a06;
+  max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; opacity: 0; overflow: hidden;
+}
 .sumlab[data-state="2"] .ba .cost,
-.sumlab[data-state="3"] .ba .cost { opacity: 1; transform: none; }
+.sumlab[data-state="3"] .ba .cost {
+  max-height: 64px; padding-top: 12px; padding-bottom: 12px; margin-bottom: 10px; opacity: 1;
+}
 .sumlab[data-state="3"] .ba .after  { opacity: 1; }
 .sumlab[data-state="3"] .ba .before { opacity: 0.5; }
 .sumlab[data-state="3"] .ba .before .v { text-decoration: line-through; }
 
 /* =======================================================================
-   ROUTING LADDER
-   Three tiers (cheap/mid/high). A request "token" drops in, gets scored,
-   and lights the tier it lands on. States 0..4 walk through examples.
+   ROUTING LADDER  (optimization showcase - keeps its step animation)
    ======================================================================= */
-.ladder { display: grid; grid-template-columns: 150px 1fr; gap: 26px; align-items: center; height: 360px; margin-top: 8px; }
-.ladder .rungs { display: flex; flex-direction: column; gap: 12px; }
+.ladder { display: grid; grid-template-columns: 190px 1fr; grid-template-rows: 100%; gap: 30px; align-items: center; height: 370px; margin-top: 8px; }
+.ladder .rungs { display: flex; flex-direction: column; gap: 14px; }
 .rung {
-  display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 14px;
-  border: 1px solid var(--tw-hair); border-radius: 10px; padding: 12px 16px; background: #fff;
+  display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 16px;
+  border: 1px solid var(--tw-hair); border-radius: 12px; padding: 16px 20px; background: #fff;
   transition: all 0.4s ease; opacity: 0.55;
 }
-.rung .tier { font-weight: 700; font-size: 0.8em; }
-.rung .mdl  { font-family: var(--tw-mono); font-size: 0.62em; color: var(--tw-muted); }
-.rung .cost { font-family: var(--tw-mono); font-size: 0.72em; font-weight: 700; }
-.rung .tag  { font-size: 0.55em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tw-muted); }
-.rung.cheap { border-left: 6px solid var(--tw-green); }
-.rung.mid   { border-left: 6px solid var(--tw-amber); }
-.rung.high  { border-left: 6px solid var(--tw-coral); }
-.rung.active { opacity: 1; box-shadow: 0 10px 30px rgba(0,40,52,0.12); transform: translateX(6px); }
+.rung .tier { font-weight: 800; font-size: 0.9em; }
+.rung .mdl  { font-family: var(--tw-mono); font-size: 0.66em; color: var(--tw-muted); line-height: 1.45; }
+.rung .tag  { font-size: 0.58em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tw-muted); }
+.rung.cheap { border-left: 8px solid var(--tw-jade); }
+.rung.mid   { border-left: 8px solid var(--tw-turmeric); }
+.rung.high  { border-left: 8px solid var(--tw-flamingo); }
+.rung.active { opacity: 1; box-shadow: 0 10px 30px rgba(0,61,79,0.14); transform: translateX(6px); }
 .rung.dimmed { opacity: 0.3; }
 .rung.escalated { border-style: dashed; }
 
-.ladder .meter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.ladder .meter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 .ladder .gauge {
-  width: 128px; height: 128px; border-radius: 50%;
-  background: conic-gradient(var(--g, var(--tw-green)) calc(var(--score,0)*1%), var(--tw-card) 0);
+  width: 150px; height: 150px; border-radius: 50%;
+  background: conic-gradient(var(--g, var(--tw-jade)) calc(var(--score,0)*1%), var(--tw-card) 0);
   display: flex; align-items: center; justify-content: center; transition: all 0.5s ease;
 }
 .ladder .gauge .inner {
-  width: 96px; height: 96px; border-radius: 50%; background: #fff;
+  width: 112px; height: 112px; border-radius: 50%; background: #fff;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.ladder .gauge .val { font-family: var(--tw-mono); font-weight: 800; font-size: 1.5em; color: var(--tw-teal-900); }
-.ladder .gauge .cap { font-size: 0.5em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tw-muted); }
-.ladder .req { font-size: 0.62em; color: var(--tw-ink-soft); text-align: center; max-width: 150px; min-height: 2.4em; }
-.ladder .req b { color: var(--tw-teal-900); }
+.ladder .gauge .val { font-family: var(--tw-mono); font-weight: 800; font-size: 1.6em; color: var(--tw-wave); }
+.ladder .gauge .cap { font-size: 0.52em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tw-muted); }
+.ladder .req { font-size: 0.68em; color: var(--tw-ink-soft); text-align: center; max-width: 190px; min-height: 2.6em; line-height: 1.35; }
+.ladder .req b { color: var(--tw-wave); }
 
 /* ---- ladder state wiring (states 1..4 = four routing examples) ---- */
-.ladder .gauge { --score: 0; --g: var(--tw-green); }
-.ladder[data-state="1"] .gauge { --score: 31; --g: var(--tw-green); }
-.ladder[data-state="2"] .gauge { --score: 68; --g: var(--tw-amber); }
-.ladder[data-state="3"] .gauge { --score: 92; --g: var(--tw-coral); }
-.ladder[data-state="4"] .gauge { --score: 38; --g: var(--tw-green); }
+.ladder .gauge { --score: 0; --g: var(--tw-jade); }
+.ladder[data-state="1"] .gauge { --score: 31; --g: var(--tw-jade); }
+.ladder[data-state="2"] .gauge { --score: 68; --g: var(--tw-turmeric); }
+.ladder[data-state="3"] .gauge { --score: 92; --g: var(--tw-flamingo); }
+.ladder[data-state="4"] .gauge { --score: 38; --g: var(--tw-jade); }
 
 .ladder .state-item { display: none; }
 .ladder[data-state="1"] .state-item.s-1,
@@ -183,7 +296,7 @@
 .ladder[data-state="2"] .rung.mid,
 .ladder[data-state="3"] .rung.high,
 .ladder[data-state="4"] .rung.mid {
-  opacity: 1; box-shadow: 0 10px 30px rgba(0,40,52,0.12); transform: translateX(6px);
+  opacity: 1; box-shadow: 0 10px 30px rgba(0,61,79,0.14); transform: translateX(6px);
 }
 /* tiers skipped because the difficulty score cleared them */
 .ladder[data-state="2"] .rung.cheap,
@@ -191,11 +304,11 @@
 .ladder[data-state="3"] .rung.mid { opacity: 0.28; }
 /* cascade: cheap answered but failed the quality gate, so it escalated */
 .ladder[data-state="4"] .rung.cheap { opacity: 0.5; border-style: dashed; }
-.ladder .rung .runmark { opacity: 0; font-weight: 700; color: var(--tw-green); }
+.ladder .rung .runmark { opacity: 0; font-weight: 700; color: var(--tw-jade); font-size: 0.8em; white-space: nowrap; }
 .ladder[data-state="1"] .rung.cheap .runmark,
 .ladder[data-state="2"] .rung.mid .runmark,
 .ladder[data-state="3"] .rung.high .runmark,
 .ladder[data-state="4"] .rung.mid .runmark { opacity: 1; }
-.ladder .rung.high .runmark { color: var(--tw-coral); }
-.ladder .rung .failmark { opacity: 0; font-weight: 700; color: var(--tw-coral-600); }
+.ladder .rung.high .runmark { color: var(--tw-flamingo); }
+.ladder .rung .failmark { opacity: 0; font-weight: 700; color: var(--tw-flamingo); font-size: 0.8em; white-space: nowrap; }
 .ladder[data-state="4"] .rung.cheap .failmark { opacity: 1; }

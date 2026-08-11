@@ -8,7 +8,6 @@
   <!-- Vendored reveal.js (offline) -->
   <link rel="stylesheet" href="vendor/reveal/reset.css" />
   <link rel="stylesheet" href="vendor/reveal/reveal.css" />
-  <link rel="stylesheet" href="vendor/reveal/plugin/highlight/monokai.css" />
 
   <!-- Vendored fonts (offline) -->
   <link rel="stylesheet" href="vendor/fonts/fonts.css" />
@@ -22,10 +21,15 @@
 <body>
   <!-- =============================== persistent brand chrome (every slide) -->
   <div class="deck-brand">
-    <span class="tw-logo"><span class="slash">/</span>thoughtworks</span>
+    <img class="tw-img light" src="assets/tw-logo.svg" alt="Thoughtworks" />
+    <img class="tw-img dark" src="assets/tw-logo-white.svg" alt="Thoughtworks" />
+  </div>
+  <div class="deck-xconf">
+    <img class="xconf-img light" src="assets/xconf-logo.svg" alt="XConf" />
+    <img class="xconf-img dark" src="assets/xconf-logo-white.svg" alt="XConf" />
   </div>
   <div class="deck-footer">
-    <span>&copy; 2025 Thoughtworks</span>
+    <span>&copy; 2026 Thoughtworks</span>
     <span class="sep">|</span>
     <span>XConf 2026 &middot; Optimizing LLM-Powered Applications</span>
   </div>
@@ -53,7 +57,6 @@
 
   <!-- ================================================================ scripts -->
   <script src="vendor/reveal/reveal.js"></script>
-  <script src="vendor/reveal/plugin/highlight/highlight.js"></script>
   <script src="vendor/reveal/plugin/notes/notes.js"></script>
 
   <!-- engine (must load before slides) -->
@@ -66,6 +69,7 @@
   <script src="slides/10-base-agent.js"></script>
   <script src="slides/20-summarization.js"></script>
   <script src="slides/30-prompt-caching.js"></script>
+  <script src="slides/35-cache-friendly-prompts.js"></script>
   <script src="slides/40-routing.js"></script>
   <script src="slides/50-context-window.js"></script>
   <script src="slides/60-loop-prevention.js"></script>

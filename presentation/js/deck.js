@@ -9,7 +9,8 @@
 
    DECLARATIVE HOOKS a slide can put on its <section> (via the def object)
    or on any .fragment inside it:
-     section def:  dark, hideHud, hideChrome, tokens, cost, notes
+     section def:  dark, hud (opt-IN: HUD only shows on slides that ask),
+                   hideChrome, tokens, cost, notes
      fragment:     data-tokens / data-cost   -> HUD jumps to these when shown
                    data-hint "text"          -> shows the HUD side-caption
                    data-set-state N + data-state-el "#sel"
@@ -46,7 +47,7 @@
       } else if (def.bg) {
         s.setAttribute("data-background-color", def.bg);
       }
-      if (def.hideHud) s.dataset.hideHud = "1";
+      if (def.hud) s.dataset.hud = "1";
       if (def.hideChrome) s.dataset.hideChrome = "1";
       if (def.tokens != null) s.dataset.tokens = def.tokens;
       if (def.cost != null) s.dataset.cost = def.cost;
@@ -71,14 +72,14 @@
       maxScale: 2.0,
       hash: true,
       slideNumber: "c/t",
-      transition: "slide",
-      transitionSpeed: "default",
+      transition: "fade",
+      transitionSpeed: "fast",
       backgroundTransition: "fade",
       controls: true,
       controlsTutorial: false,
       progress: true,
       center: false,
-      plugins: [RevealHighlight, RevealNotes],
+      plugins: [RevealNotes],
     });
     HUD.init();
     Reveal.on("ready", update);
@@ -101,7 +102,10 @@
     document.body.classList.toggle("chrome-dark", dark);
     document.body.classList.toggle("dark-chrome", dark);
     document.body.classList.toggle("chrome-hidden", section.dataset.hideChrome === "1");
-    if (section.dataset.hideHud === "1") HUD.hide(); else HUD.show();
+    // HUD is OPT-IN: it appears only on animated optimization demos
+    const hudOn = section.dataset.hud === "1";
+    document.body.classList.toggle("hud-on", hudOn);
+    if (hudOn) HUD.show(); else HUD.hide();
 
     // ---- onLeave / onEnter hooks -----------------------------------------
     if (prevSection && prevSection !== section) {
@@ -138,8 +142,8 @@
     stateTargets.forEach((state, el) => { el.dataset.state = state; });
 
     LAST = { tokens, cost };
-    if (section.dataset.hideHud !== "1") HUD.set(tokens, cost, { animate: true });
-    HUD.hintText(hint);
+    if (hudOn) HUD.set(tokens, cost, { animate: true });
+    HUD.hintText(hudOn ? hint : null);
   }
 
   window.Deck = Deck;
