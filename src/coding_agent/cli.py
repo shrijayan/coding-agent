@@ -6,6 +6,7 @@ metrics/, commands/, and optimizations/ - this stays thin on purpose so
 it's obvious where to look for behavior versus where to look for I/O.
 """
 
+import sys
 import time
 from typing import Any
 
@@ -41,6 +42,28 @@ from coding_agent.optimizations.routing.tiers import InvalidTierConfigError, loa
 _EXIT_COMMANDS = {"exit", "quit"}
 _HYBRID_ROUTING = "hybrid-routing"
 _CACHE_FRIENDLY = "cache-friendly-prompts"
+
+# Terminal colors: the agent's answer is green, the user's prompt/input white,
+# and every auxiliary line (turn/routing/cache summaries, tool calls, warnings,
+# and slash-command output like /usage and /metrics) yellow; errors are red.
+# Disabled automatically when stdout isn't a TTY so piped/redirected output
+# stays free of escape codes.
+_GREEN = "\033[32m"
+_WHITE = "\033[37m"
+_YELLOW = "\033[33m"
+_RED = "\033[31m"
+_RESET = "\033[0m"
+_USE_COLOR = sys.stdout.isatty()
+
+
+def _seq(code: str) -> str:
+    """The raw ANSI code, or '' when color is disabled (non-TTY)."""
+    return code if _USE_COLOR else ""
+
+
+def _color(text: str, code: str) -> str:
+    """Wrap text in an ANSI color (a no-op when color is disabled)."""
+    return f"{code}{text}{_RESET}" if _USE_COLOR else text
 
 
 def run() -> None:
@@ -97,7 +120,7 @@ def run() -> None:
         configured_models = [tier.model or config.model for tier in tiers]
         routing_tracker = hybrid_routing.get_tracker()
         for warning in hybrid_routing.get_warnings():
-            print(f"warning> {warning}")
+            print(_color(f"warning> {warning}", _YELLOW))
 
     # /cache only exists when cache-friendly construction is actually enabled -
     # it reports on the same tracker the wrapper (built above via the bundle)
@@ -134,10 +157,12 @@ def run() -> None:
     )
     while True:
         try:
-            user_input = input("you> ").strip()
+            user_input = input(_seq(_WHITE) + "you> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nBye.")
+            print(_seq(_RESET) + "\nBye.")
             return
+        # Close the white input color before printing anything else.
+        print(_seq(_RESET), end="", flush=True)
 
         if not user_input:
             continue
@@ -146,7 +171,7 @@ def run() -> None:
             return
 
         if command_registry.is_command(user_input):
-            print(f"\n{command_registry.run(user_input)}\n")
+            print(f"\n{_color(command_registry.run(user_input), _YELLOW)}\n")
             continue
 
         # Snapshot the routing log so we can show just this turn's decisions
@@ -164,11 +189,11 @@ def run() -> None:
         try:
             answer = agent.run_turn(user_input, on_tool_call=_print_tool_call)
         except LLMError as error:
-            print(f"\nerror> {error}\n")
+            print(f"\n{_color(f'error> {error}', _RED)}\n")
             continue
 
         turn_ms = (time.perf_counter() - turn_start) * 1000.0
-        print(f"\nagent> {answer}\n")
+        print(f"\n{_color(f'agent> {answer}', _GREEN)}\n")
 
         if routing_tracker is not None:
             new_records = routing_tracker.records[routing_mark:]
@@ -178,7 +203,7 @@ def run() -> None:
                 by_model_before, calls_before, usage_tracker, pricing, config, turn_ms
             )
         if summary:
-            print(f"{summary}\n")
+            print(f"{_color(summary, _YELLOW)}\n")
 
         # Cache-friendly construction is its own mode with its own signals
         # (reuse %, cacheable ratio), so it prints its own line - in addition
@@ -186,7 +211,7 @@ def run() -> None:
         if cache_tracker is not None:
             cache_summary = _format_cache_summary(cache_tracker.records[cache_mark:])
             if cache_summary:
-                print(f"{cache_summary}\n")
+                print(f"{_color(cache_summary, _YELLOW)}\n")
 
 
 def _format_cache_summary(records: list[PromptCacheRecord]) -> str:
@@ -255,16 +280,17 @@ def _format_turn_summary(
 def _format_routing_summary(
     records: list[RoutingRecord], pricing: PricingTable
 ) -> str:
-    """One compact annotation for a turn's routing decisions.
+    """One annotation for a turn's routing decisions.
 
-    A single-send turn gets the detailed per-path line from the brief's
-    examples; a multi-send turn (tool loop) gets a compact roll-up instead
-    of one noisy line per internal send().
+    A single-send turn is the detailed per-path line. A multi-send turn (the
+    tool loop) gets a header roll-up plus a numbered breakdown, one line per
+    send - so the difficulty and answering model are always visible, even
+    across many internal sends, rather than being collapsed away.
     """
     if not records:
         return ""
     if len(records) == 1:
-        return _format_single_record(records[0], pricing)
+        return f"  \u21b3 {_routing_detail(records[0], pricing)}"
 
     total_latency = sum(r.latency_ms for r in records)
     total_cost = sum(pricing.cost_for(r.usage, r.model) for r in records)
@@ -272,13 +298,22 @@ def _format_routing_summary(
     for record in records:
         breakdown[record.path] = breakdown.get(record.path, 0) + 1
     paths = ", ".join(f"{count} {path}" for path, count in breakdown.items())
-    return (
+    header = (
         f"  \u21b3 routing: {len(records)} sends \u00b7 {paths} \u00b7 "
         f"{total_latency:.0f}ms \u00b7 ${total_cost:.4f}"
     )
+    lines = [header]
+    lines.extend(
+        f"      {index}. {_routing_detail(record, pricing)}"
+        for index, record in enumerate(records, 1)
+    )
+    return "\n".join(lines)
 
 
-def _format_single_record(record: RoutingRecord, pricing: PricingTable) -> str:
+def _routing_detail(record: RoutingRecord, pricing: PricingTable) -> str:
+    """The per-send detail (path, tier/model, difficulty, gate, latency, cost)
+    without the leading marker, so both the single-send line and each row of
+    the multi-send breakdown share exactly one formatting."""
     cost = pricing.cost_for(record.usage, record.model)
     model = record.model.removeprefix("ollama/")
     tier = record.tier or record.path
@@ -290,7 +325,7 @@ def _format_single_record(record: RoutingRecord, pricing: PricingTable) -> str:
         reason = ", ".join(record.gate_failed_checks) or "gate_failed"
         hops = f"+{record.hops} tier" + ("s" if record.hops != 1 else "")
         return (
-            f"  \u21b3 cheap_escalated \u00b7 {reason} \u2192 escalated {hops} \u00b7 "
+            f"cheap_escalated \u00b7 {reason} \u2192 escalated {hops} \u00b7 "
             f"{tier}/{model} \u00b7 {difficulty} \u00b7 {latency} \u00b7 {price}"
         )
 
@@ -299,15 +334,15 @@ def _format_single_record(record: RoutingRecord, pricing: PricingTable) -> str:
         if record.gate_passed is False:
             gate = "quality gate FAIL (top of ladder, kept)"
         return (
-            f"  \u21b3 cheap \u00b7 {tier}/{model} \u00b7 {difficulty} \u00b7 "
+            f"cheap \u00b7 {tier}/{model} \u00b7 {difficulty} \u00b7 "
             f"{gate} \u00b7 {latency} \u00b7 {price}"
         )
 
     return (
-        f"  \u21b3 direct_powerful \u00b7 {tier}/{model} \u00b7 {difficulty} \u00b7 "
+        f"direct_powerful \u00b7 {tier}/{model} \u00b7 {difficulty} \u00b7 "
         f"{latency} \u00b7 {price}"
     )
 
 
 def _print_tool_call(name: str, tool_input: dict[str, Any]) -> None:
-    print(f"  [tool] {name}({tool_input})")
+    print(_color(f"  [tool] {name}({tool_input})", _YELLOW))

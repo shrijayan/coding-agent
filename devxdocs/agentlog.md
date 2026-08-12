@@ -1336,3 +1336,58 @@ Verified via scripted walk of all 31 fully-revealed slides: no console
 errors, no broken/missing assets, zero overflow, HUD gating still correct,
 sculpture only on the cover, slide-9 stream clip 0-1px with clear gap to
 the caption line.
+
+### [2026-08-12] Recover lost cli.py colors + carry the palette into the notebook
+
+Context: the previous session's last-turn cli.py edits (color scheme +
+per-send routing breakdown) had been lost - they were uncommitted when the
+working tree got reset to HEAD (aa74fb1), so git discarded them (stash only
+held a uv.lock WIP). The Ollama integration and .env.example docs were safe
+(committed). Re-applied the two lost cli.py changes verbatim (ruff clean, 67
+passed).
+
+Then extended the same palette to the workshop notebook
+(`notebooks/optimizing_llm_apps.ipynb`) so participants get the readable
+output too:
+- Added `_c(text, code)` + ANSI constants in the harness cell. NOT gated on
+  isatty (unlike cli.py) because Jupyter/Colab render ANSI even though stdout
+  isn't a TTY.
+- `WorkshopSession.ask`: prompt WHITE, `agent>` answer GREEN, tool lines +
+  per-turn summary YELLOW; `usage_report`/`routing_report`/`cache_report`
+  (i.e. /usage, /metrics, /cache) YELLOW; routing warnings YELLOW.
+- `run_scenario`/`compare`: scenario header, run summary, and the text
+  fallback table YELLOW (the pandas `display()` table is left native).
+- Bonus correctness: notebook now calls `load_tiers(provider=self.config
+  .provider)` so an Ollama-provider session picks the ollama ladder (harmless
+  for the openrouter workshop default).
+
+Caveat: `_WHITE` for the user prompt reads well on dark themes; on a light
+Colab theme it's faint. Left as-is to match the terminal palette exactly, per
+request. Verified: ast.parse of every code cell OK (13 `_c(` sites); ANSI
+constants emit correct sequences.
+
+### [2026-08-12] Swap the three OpenRouter presets to Gemma/Qwen/DeepSeek
+
+New OpenRouter access policy allows only three models, so the ladder is now
+(by capability): cheap `google/gemma-3.4b`, mid `qwen/qwen3.7-flash`, high
+`deepseek/deepseek-v4-flash-0731`. Note DeepSeek moved cheap -> high (its old
+role) and is the new base default; `minimax/minimax-m3` and `z-ai/glm-5.2`
+were removed.
+
+- `models.yaml`: rewrote the OpenRouter catalog block (reordered cheap->high),
+  repriced per the new access policy - gemma 0.05/0.10, qwen 0.03/0.13,
+  deepseek 0.08/0.252 (was 0.09/0.18) - refreshed each `metadata` description
+  + strengths + good_for_difficulty for its new tier, pointed `routing.tiers`
+  and `default.model` at the new slugs.
+- Mirrored everywhere the presets are named: `.env.example` example list, the
+  notebook (Step 3 config table, `PROVIDERS` registry default + presets,
+  Optimization 2 routing description), and `README_ROUTING.md`'s ladder
+  example.
+- `tests/test_models_config.py`: cheap-tier slug assertion -> gemma, metadata
+  lookup -> gemma, deepseek price math -> 0.08+0.252, and the two cost-cap
+  tests' `z-ai/glm-5.2` refs -> deepseek (1M+1M = $0.332 still blows the $0.10
+  cap). Full suite green (67 passed).
+
+Note: exact slugs `qwen/qwen3.7-flash` and `google/gemma-3.4b` were inferred
+from the access-policy display names using the same vendor/name-hyphenated
+convention as the existing deepseek slug; pricing per user (in/out per 1M).

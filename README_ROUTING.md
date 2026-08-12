@@ -98,13 +98,13 @@ routing:
   ollama_base_url: http://localhost:11434/v1
   tiers:
     - name: cheap
-      model: deepseek/deepseek-v4-flash-0731
+      model: google/gemma-3.4b
       difficulty_ceiling: 0.45
     - name: mid
-      model: thinkingmachines/inkling-small
+      model: qwen/qwen3.7-flash
       difficulty_ceiling: 0.75
     - name: high
-      model: qwen/qwen3.8-max
+      model: deepseek/deepseek-v4-flash-0731
       difficulty_ceiling: 1.0
 ```
 
