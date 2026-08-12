@@ -65,6 +65,10 @@ class Config:
     bash_timeout_seconds: int
     summary_threshold_messages: int
     summary_keep_recent_messages: int
+    loop_guard_nudge_after: int
+    loop_guard_halt_after: int
+    context_prune_keep_recent_messages: int
+    context_prune_min_chars_to_prune: int
     routing_ollama_base_url: str
     routing_quality_gate_enabled: bool
     session_cost_cap_usd: float | None
@@ -110,6 +114,14 @@ class Config:
             bash_timeout_seconds=_require_int("AGENT_BASH_TIMEOUT_SECONDS"),
             summary_threshold_messages=_require_int("AGENT_SUMMARY_THRESHOLD_MESSAGES"),
             summary_keep_recent_messages=_require_int("AGENT_SUMMARY_KEEP_RECENT_MESSAGES"),
+            loop_guard_nudge_after=_require_int("AGENT_LOOP_GUARD_NUDGE_AFTER"),
+            loop_guard_halt_after=_require_int("AGENT_LOOP_GUARD_HALT_AFTER"),
+            context_prune_keep_recent_messages=_require_int(
+                "AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES"
+            ),
+            context_prune_min_chars_to_prune=_require_int(
+                "AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE"
+            ),
             routing_ollama_base_url=(
                 _optional_str("AGENT_ROUTING_OLLAMA_BASE_URL") or ollama_base_url
             ),

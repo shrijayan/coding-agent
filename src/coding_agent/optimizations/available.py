@@ -13,8 +13,10 @@ from collections.abc import Callable
 
 from coding_agent.optimizations import (
     cache_friendly,
+    context_window,
     conversation_summary,
     hybrid_routing,
+    loop_guard,
 )
 from coding_agent.optimizations.bundle import OptimizationBundle
 
@@ -22,4 +24,6 @@ AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
     "conversation-summary": conversation_summary.build,
     "hybrid-routing": hybrid_routing.build,
     "cache-friendly-prompts": cache_friendly.build,
+    "loop-guard": loop_guard.build,
+    "context-window": context_window.build,
 }

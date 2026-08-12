@@ -63,6 +63,7 @@ def build_agent(
             EditFileTool(),
             BashTool(timeout_seconds=config.bash_timeout_seconds),
             ListFilesTool(),
+            *(optimizations.extra_tools or []),
         ]
     )
     return AgentLoop(

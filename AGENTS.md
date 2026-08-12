@@ -75,12 +75,19 @@ src/coding_agent/
 ├── commands/
 │   ├── base.py              # SlashCommand interface (mirrors tools/base.py's Tool)
 │   ├── registry.py           # SlashCommandRegistry - looks up and runs commands by name
-│   └── usage_command.py       # /usage - prints tokens, cost, call counts for the session
+│   ├── usage_command.py       # /usage - prints tokens, cost, call counts for the session
+│   ├── loop_guard_command.py    # /loopguard - repeats seen, nudges, halts this session
+│   └── context_command.py        # /context - tool output pruned, skills loaded this session
 ├── optimizations/
 │   ├── bundle.py             # OptimizationBundle - what one optimization changes, + merge logic
 │   ├── registry.py            # OptimizationRegistry - resolves --enable names into a bundle
 │   ├── available.py            # AVAILABLE_OPTIMIZATIONS - the one registration point (cli.py + benchmark share it)
-│   └── history_policy.py        # HistoryPolicy interface + DefaultHistoryPolicy (send everything)
+│   ├── history_policy.py        # HistoryPolicy interface + DefaultHistoryPolicy (send everything)
+│   ├── history_utils.py          # safe_keep_from() - shared "never split a tool_use/tool_result pair" cut logic
+│   ├── loop_guard.py              # --enable loop-guard: detect a repeated failing tool call, nudge then halt
+│   ├── context_window.py           # --enable context-window: prune stale tool output + on-demand skills
+│   └── skills_library.py            # Skill/SkillsLibrary + load_skills_dir() - parses coding_agent/skills/*.md
+├── skills/                    # *.md reference files loaded on demand by load_skill (see skills_library.py)
 ├── benchmark/
 │   ├── tasks.py              # 3 hand-verified SWE-bench Lite tasks (BenchmarkTask + TASKS)
 │   ├── data/<instance_id>/    # each task's problem statement, test patch, FAIL_TO_PASS/PASS_TO_PASS
@@ -94,7 +101,8 @@ src/coding_agent/
     ├── write_file.py
     ├── edit_file.py
     ├── bash.py
-    └── list_files.py
+    ├── list_files.py
+    └── load_skill.py        # load_skill(name) - registered by --enable context-window (extra_tools)
 ```
 
 ## Conventions (please follow these when changing code)
@@ -256,6 +264,13 @@ to it:
   difficulty score, quality-gate outcome, model latency, cost
   (`_format_routing_summary`) - because difficulty and gate results only
   exist when routing is active.
+- `--enable cache-friendly-prompts` / `loop-guard` / `context-window`: an
+  *extra* line each, printed alongside whichever line above (they can all
+  be enabled together) - stable-prefix size and reuse % (`/cache`,
+  `_format_cache_summary`), repeat streak/nudges/halts (`/loopguard`,
+  `_format_loop_guard_summary`), and outputs pruned/skills loaded
+  (`/context`, `_format_context_summary`) respectively - silent on a turn
+  where that mode's mechanism didn't actually do anything.
 
 If you build an optimization that introduces its own mode with its own
 extra signals (the way hybrid-routing has difficulty/gate data), give it
@@ -275,15 +290,22 @@ a new one.
 
 ### Step 1: figure out which hook(s) you need
 
-An `OptimizationBundle` has three fields. Set only the one(s) relevant
+An `OptimizationBundle` has four fields. Set only the one(s) relevant
 to what your optimization actually changes - most optimizations need
-exactly one:
+exactly one, though a bigger one can combine several (`context-window`
+sets three: see `optimizations/context_window.py`):
 
 | Field | Set this if your optimization... | Examples |
 |---|---|---|
-| `history_policy` | changes what conversation history is sent to the model | conversation summarization, context window optimization |
-| `wrap_llm_client` | changes something about the model call itself | caching, model routing, inference parameters (top_p/top_k) |
-| `system_prompt_suffix` | is really just an instruction to the model | prompt optimization, output length/style control |
+| `history_policy` | changes what conversation history is sent to the model | conversation summarization, context window pruning |
+| `wrap_llm_client` | changes something about the model call itself | caching, model routing, inference parameters (top_p/top_k), loop guard |
+| `system_prompt_suffix` | is really just an instruction to the model | prompt optimization, output length/style control, a skills menu |
+| `extra_tools` | gives the model a new capability it can invoke on demand | loading reference material only when asked for (see `optimizations/context_window.py` + `tools/load_skill.py`) |
+
+`extra_tools` is additive (a `list[Tool]`, concatenated across enabled
+optimizations) - unlike `history_policy`, it's never a conflict for two
+optimizations to each register a tool (`ToolRegistry` still fails fast on
+an actual duplicate *name*).
 
 ### Step 2: implement it
 

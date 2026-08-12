@@ -23,15 +23,17 @@ Two things worth understanding before copying this pattern:
    matching tool_result message - if it did, whichever side lost its
    half would reference a tool call that doesn't exist from that side's
    perspective, and the provider's API rejects that outright. See
-   `_safe_keep_from`.
+   `optimizations/history_utils.py`'s `safe_keep_from`, shared with
+   ContextPruningPolicy (optimizations/context_window.py) for the same reason.
 """
 
 from dataclasses import dataclass, field
 
 from coding_agent.config import Config
-from coding_agent.llm.messages import Message, Part, TextPart, ToolUsePart
+from coding_agent.llm.messages import Message, TextPart
 from coding_agent.optimizations.bundle import OptimizationBundle
 from coding_agent.optimizations.history_policy import HistoryContext, HistoryPolicy
+from coding_agent.optimizations.history_utils import safe_keep_from
 
 _SUMMARY_SYSTEM_PROMPT = (
     "Summarize the conversation so far, concisely but precisely: what the "
@@ -81,7 +83,7 @@ class ConversationSummaryPolicy(HistoryPolicy):
         if len(messages) <= self.threshold_messages:
             return messages
 
-        keep_from = _safe_keep_from(messages, len(messages) - self.keep_recent_messages)
+        keep_from = safe_keep_from(messages, len(messages) - self.keep_recent_messages)
         new_messages = messages[self._summarized_through : keep_from]
 
         if new_messages:
@@ -113,26 +115,6 @@ class ConversationSummaryPolicy(HistoryPolicy):
         # would make this optimization look cheaper than it actually is.
         context.usage_tracker.record_llm_call(response.usage, response.model)
         return response.text
-
-
-def _safe_keep_from(messages: list[Message], desired_keep_from: int) -> int:
-    """Nudge the cut point earlier if needed so it never separates a
-    tool_use message from its matching tool_result message."""
-    keep_from = desired_keep_from
-    while keep_from > 0 and _ends_with_unresolved_tool_use(messages[:keep_from]):
-        keep_from -= 1
-    return keep_from
-
-
-def _ends_with_unresolved_tool_use(messages: list[Message]) -> bool:
-    if not messages:
-        return False
-    last = messages[-1]
-    return last.role == "assistant" and any(_is_tool_use(part) for part in last.parts)
-
-
-def _is_tool_use(part: Part) -> bool:
-    return isinstance(part, ToolUsePart)
 
 
 def build() -> OptimizationBundle:

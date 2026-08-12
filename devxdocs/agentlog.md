@@ -1391,3 +1391,84 @@ were removed.
 Note: exact slugs `qwen/qwen3.7-flash` and `google/gemma-3.4b` were inferred
 from the access-policy display names using the same vendor/name-hyphenated
 convention as the existing deepseek slug; pricing per user (in/out per 1M).
+
+
+### [2026-08-12] Two new optimizations: `loop-guard` and `context-window`
+
+Built the two techniques the slides (`50-context-window.js`,
+`60-loop-prevention.js`) and the notebook's own "Coming soon" section had
+flagged as in-progress, at the same quality bar as `cache-friendly-prompts`
+(tracker + `/slashcommand` + per-turn CLI line + tests + notebook section).
+
+Framework change first: `OptimizationBundle` only had 3 fields
+(`history_policy`, `wrap_llm_client`, `system_prompt_suffix`). Added a 4th,
+`extra_tools` (a `list[Tool]`, concatenated across optimizations - additive,
+never a conflict like `history_policy` is), so an optimization can register
+a new tool. Wired into `agent/factory.py`. Also extracted
+`conversation_summary.py`'s tool_use/tool_result-pairing-safe cut logic into
+a new shared `optimizations/history_utils.py` (`safe_keep_from`), since the
+new pruning policy needed the exact same invariant.
+
+**`loop-guard`** (`wrap_llm_client`): watches the tail of the conversation
+for the same tool call failing with the same error, repeatedly. After
+`AGENT_LOOP_GUARD_NUDGE_AFTER` identical failures in a row it injects a
+corrective note before the next real call; after
+`AGENT_LOOP_GUARD_HALT_AFTER` it skips calling the model entirely and
+returns a synthetic zero-usage "loop detected, stopping" response instead
+(`model=""`, the existing "no real model answered this" convention -
+`UsageCommand._by_model` already folds that into the configured model and
+skips it once its token delta is zero, so it doesn't crash or misprice
+`/usage`). Complements the prompt-side instruction already in
+`system_prompt.py` ("do not repeat the exact same call..."). `/loopguard`
+reports counts only - no estimated "tokens saved by halting," since this
+project never estimates.
+
+**`context-window`** (`history_policy` + `extra_tools` +
+`system_prompt_suffix`): two mechanisms, both about relevance over
+compression.
+1. `ContextPruningPolicy` replaces a stale, bulky tool-result output
+   (outside the most recent `AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES`
+   window, over `AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE` chars) with a
+   specific placeholder instead of resending it forever.
+2. "Skills": `src/coding_agent/skills/*.md` (YAML frontmatter + body,
+   parsed by the new `skills_library.py`) ship 3 example skills. Only the
+   name+description menu goes in the system prompt; the full body only
+   enters context via the new `load_skill` tool - progressive disclosure,
+   same idea as Claude Skills.
+
+Real bug caught during manual end-to-end smoke testing (not by the unit
+tests, which only ever called `prepare()` once): `AgentLoop` calls
+`history_policy.prepare()` again on every internal send() within a turn,
+always against the same untouched, growing `Conversation.messages` - so the
+pruning policy was re-"pruning" and re-recording the exact same old bulky
+output on every subsequent call, massively overcounting `/context`'s
+chars-removed stat as a session went on. Fixed by tracking already-recorded
+`tool_use_id`s on the policy instance (mirrors how `ConversationSummaryPolicy`
+tracks `_summarized_through` to avoid reprocessing) - added a regression
+test (`test_repeated_prepare_calls_do_not_double_count_the_same_prune`) so
+it can't silently regress.
+
+Notebook: inserted "Optimization 4 - Agent loop prevention" and
+"Optimization 5 - Context window optimization" sections between the
+existing cache-friendly section and "Stack them", following the established
+markdown-intro -> `run_scenario` -> `compare` -> `/x_report()` pattern;
+widened the combined-stack and scoreboard cells to include both; trimmed
+"Coming soon" to just what's still genuinely unbuilt (provider-side prompt
+caching). Loop-guard's section is explicit that a well-behaved model should
+show *zero* nudges/halts on the cooperative shared `DEMO_PROMPTS` - that's
+the correct, honest result, not a failed demo - with a separate, clearly-
+labeled non-deterministic stress-prompt cell for anyone who wants to
+actually try to trip it live.
+
+Verified: `uv run pytest` (90 passed, up from 67), `ruff check` clean on
+every new/changed file, notebook JSON structurally valid (50 cells, every
+code cell parses). Manually smoke-tested both optimizations end-to-end
+through a real `AgentLoop` with a scripted fake LLM client (no network) -
+confirmed loop-guard's sent/sent/nudged/nudged/halted progression skips the
+real call on halt, and context-window's pruning + `load_skill` both work
+through the actual tool loop with the dedup fix in place. Also confirmed
+`loop-guard` + `context-window` compose cleanly, and `context-window` +
+`conversation-summary` correctly raises `ConflictingOptimizationsError`
+(both own `history_policy`). Did **not** run the notebook against a real
+API key (would cost real money) - that's still owed if you want to confirm
+the live-model prose reads well, not just that the code path works.

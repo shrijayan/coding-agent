@@ -13,6 +13,8 @@ from typing import Any
 from coding_agent.agent.factory import build_agent
 from coding_agent.cli_args import parse_args
 from coding_agent.commands.cache_command import PromptCacheCommand
+from coding_agent.commands.context_command import ContextWindowCommand
+from coding_agent.commands.loop_guard_command import LoopGuardCommand
 from coding_agent.commands.metrics_command import RoutingMetricsCommand
 from coding_agent.commands.registry import SlashCommandRegistry
 from coding_agent.commands.usage_command import UsageCommand
@@ -25,9 +27,19 @@ from coding_agent.models_config import (
     load_catalog_metadata,
     read_models_yaml,
 )
-from coding_agent.optimizations import cache_friendly, hybrid_routing
+from coding_agent.optimizations import (
+    cache_friendly,
+    context_window,
+    hybrid_routing,
+    loop_guard,
+)
 from coding_agent.optimizations.available import AVAILABLE_OPTIMIZATIONS
 from coding_agent.optimizations.bundle import ConflictingOptimizationsError
+from coding_agent.optimizations.context_window import (
+    ContextWindowEvent,
+    ContextWindowTracker,
+)
+from coding_agent.optimizations.loop_guard import LoopGuardRecord, LoopGuardTracker
 from coding_agent.optimizations.prompt_cache.metrics import (
     PromptCacheRecord,
     PromptCacheTracker,
@@ -42,6 +54,8 @@ from coding_agent.optimizations.routing.tiers import InvalidTierConfigError, loa
 _EXIT_COMMANDS = {"exit", "quit"}
 _HYBRID_ROUTING = "hybrid-routing"
 _CACHE_FRIENDLY = "cache-friendly-prompts"
+_LOOP_GUARD = "loop-guard"
+_CONTEXT_WINDOW = "context-window"
 
 # Terminal colors: the agent's answer is green, the user's prompt/input white,
 # and every auxiliary line (turn/routing/cache summaries, tool calls, warnings,
@@ -129,6 +143,16 @@ def run() -> None:
     if _CACHE_FRIENDLY in args.enabled_optimizations:
         cache_tracker = cache_friendly.get_tracker()
 
+    # /loopguard and /context only exist when their optimization is actually
+    # enabled - same "own tracker, own command" shape as cache-friendly above.
+    loop_guard_tracker: LoopGuardTracker | None = None
+    if _LOOP_GUARD in args.enabled_optimizations:
+        loop_guard_tracker = loop_guard.get_tracker()
+
+    context_tracker: ContextWindowTracker | None = None
+    if _CONTEXT_WINDOW in args.enabled_optimizations:
+        context_tracker = context_window.get_tracker()
+
     commands = [
         UsageCommand(
             tracker=usage_tracker,
@@ -147,6 +171,10 @@ def run() -> None:
         commands.append(RoutingMetricsCommand(tracker=routing_tracker, pricing=pricing))
     if cache_tracker is not None:
         commands.append(PromptCacheCommand(tracker=cache_tracker))
+    if loop_guard_tracker is not None:
+        commands.append(LoopGuardCommand(tracker=loop_guard_tracker))
+    if context_tracker is not None:
+        commands.append(ContextWindowCommand(tracker=context_tracker))
 
     command_registry = SlashCommandRegistry(commands=commands)
 
@@ -180,6 +208,8 @@ def run() -> None:
         # inside the wrapper on every send().
         routing_mark = len(routing_tracker.records) if routing_tracker else 0
         cache_mark = len(cache_tracker.records) if cache_tracker else 0
+        loop_guard_mark = len(loop_guard_tracker.records) if loop_guard_tracker else 0
+        context_mark = len(context_tracker.events) if context_tracker else 0
         # Same snapshot idea for the plain-mode turn summary: diff the
         # usage tracker before/after rather than instrumenting the loop.
         calls_before = usage_tracker.llm_calls
@@ -213,6 +243,21 @@ def run() -> None:
             if cache_summary:
                 print(f"{_color(cache_summary, _YELLOW)}\n")
 
+        # loop-guard and context-window are each their own mode with their
+        # own signals too - same "print an extra line, don't crowd the
+        # generic one" rule as cache-friendly above.
+        if loop_guard_tracker is not None:
+            loop_guard_summary = _format_loop_guard_summary(
+                loop_guard_tracker.records[loop_guard_mark:]
+            )
+            if loop_guard_summary:
+                print(f"{_color(loop_guard_summary, _YELLOW)}\n")
+
+        if context_tracker is not None:
+            context_summary = _format_context_summary(context_tracker.events[context_mark:])
+            if context_summary:
+                print(f"{_color(context_summary, _YELLOW)}\n")
+
 
 def _format_cache_summary(records: list[PromptCacheRecord]) -> str:
     """One compact annotation for a turn's cache-friendly prompt construction.
@@ -232,6 +277,40 @@ def _format_cache_summary(records: list[PromptCacheRecord]) -> str:
         f"reuse {avg_reuse * 100:.0f}% \u00b7 "
         f"cacheable {latest.cache_friendly_ratio * 100:.0f}%"
     )
+
+
+def _format_loop_guard_summary(records: list[LoopGuardRecord]) -> str:
+    """One compact annotation for a turn's loop-guard activity: how many
+    sends it watched, the repeat streak it saw, and any nudges/halts."""
+    if not records:
+        return ""
+    nudged = sum(1 for record in records if record.action == "nudged")
+    halted = sum(1 for record in records if record.action == "halted")
+    streak = records[-1].repeat_count
+    return (
+        f"  \u21b3 loop-guard: {len(records)} sends \u00b7 streak {streak} \u00b7 "
+        f"{nudged} nudged \u00b7 {halted} halted"
+    )
+
+
+def _format_context_summary(events: list[ContextWindowEvent]) -> str:
+    """One compact annotation for a turn's context-window optimization:
+    stale tool output pruned (a deterministic char count, not a token
+    estimate) and any skills loaded on demand. Silent when neither
+    happened this turn - most turns, since both are conditional."""
+    prunes = [event for event in events if event.kind == "prune"]
+    skills = [event.skill_name for event in events if event.kind == "skill_load"]
+    if not prunes and not skills:
+        return ""
+
+    parts = []
+    if prunes:
+        chars = sum(event.chars_removed for event in prunes)
+        plural = "s" if len(prunes) != 1 else ""
+        parts.append(f"pruned {len(prunes)} output{plural} ({chars:,} chars)")
+    if skills:
+        parts.append("skills loaded: " + ", ".join(skills))
+    return "  \u21b3 context: " + " \u00b7 ".join(parts)
 
 
 def _format_turn_summary(
