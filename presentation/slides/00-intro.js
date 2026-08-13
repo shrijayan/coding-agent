@@ -21,6 +21,10 @@ Deck.add({
           <span class="role"> &nbsp;|&nbsp; Thoughtworks</span>
         </div>
         <div style="position:absolute;right:8px;bottom:10px;"><img src="assets/xconf-logo.svg" alt="XConf" style="height:56px;" /></div>
+        <div class="qr-wrap">
+          <img src="assets/colab-notebook-qr.png" alt="Open the notebook in Colab" />
+          <span>Open the notebook</span>
+        </div>
       </div>
     </div>
   `,

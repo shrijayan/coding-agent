@@ -1754,3 +1754,5 @@ Actions:
 [2026-08-14] Notebook: updated key registration link to the real prod URL (key-distribution.vercel.app/w/wAwE5_U3QvomPo1YIgSHJg) in the title cell and the setup cell KEY_URL.
 
 [2026-08-14] Notebook: "Meet the base agent" demo prompt restored to "Create hello.py that prints Hello workshop, then show me its contents." (was briefly shortened to "hi").
+
+[2026-08-14] Presentation: added a QR code (colab-notebook-qr.png) on the TITLE slide pointing to the Colab notebook link, positioned bottom-right, styled via .qr-wrap in layouts.css. Verified it decodes correctly with jsQR and renders without overlapping the headline.
