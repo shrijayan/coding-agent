@@ -1750,3 +1750,5 @@ Actions:
 - Renamed routing file to `slides-21-24-model-routing.md` and fixed its internal
   slide-number refs (ladder 20->22, callout 21->23, notebook 22->24).
 [2026-08-14] Notebook: "Meet the base agent" smoke test simplified - no hardcoded model override, uses default deepseek model; demo prompt shortened to just "hi".
+
+[2026-08-14] Notebook: updated key registration link to the real prod URL (key-distribution.vercel.app/w/wAwE5_U3QvomPo1YIgSHJg) in the title cell and the setup cell KEY_URL.
