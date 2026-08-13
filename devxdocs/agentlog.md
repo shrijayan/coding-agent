@@ -1472,3 +1472,31 @@ through the actual tool loop with the dedup fix in place. Also confirmed
 (both own `history_policy`). Did **not** run the notebook against a real
 API key (would cost real money) - that's still owed if you want to confirm
 the live-model prose reads well, not just that the code path works.
+
+### [2026-08-13] Notebook: re-applied Opt 2/3 restructure after pull --rebase
+
+User did `git pull --rebase` from main; the rebase pulled a newer upstream
+notebook (now 52 cells, adds Opt 4 Agent loop prevention + Opt 5 Context window)
+and dropped our earlier edits: order was back to Opt 2 = Model routing, Opt 3 =
+Cache-friendly, no tier table, no 2a/2b split. Re-applied our changes on top of
+the new upstream version.
+
+Changes (notebook only):
+- Swapped so the flow matches the deck: **Opt 2 = Prompt optimization & caching**
+  (2a Prompt optimization [conceptual - trim + cache prefix, groundwork], 2b
+  Cache-friendly prompts [live, with layer-by-volatility table]) -> **Opt 3 =
+  Model routing** (added the 3-tier table). Physically moved the cache block
+  above routing; kept the routing code cells (opt_routing, /metrics,
+  routing_report) in place and only rebuilt the intro.
+- Tier table uses the CURRENT models.yaml ladder pulled in by the rebase:
+  low `google/gemma-3.4b` 0.05/0.10, mid `qwen/qwen3.7-flash` 0.03/0.13, high
+  `deepseek/deepseek-v4-flash-0731` 0.08/0.252 (note: this main uses gemma, not
+  the mistral-nemo from the other branch's models.yaml - kept it consistent with
+  what's actually committed here).
+- Left Opt 4 (loop prevention) and Opt 5 (context window) untouched - we never
+  edited those. NOTE for user: the deck orders context-window (50) BEFORE
+  loop-prevention (60), but the notebook has loop-prevention as Opt 4 and
+  context-window as Opt 5; flagged, not changed (out of scope of our edits).
+
+Verified: valid JSON, 52 cells, 24 code cells, 0 parse errors, section flow
+1 summary -> 2 caching(2a/2b) -> 3 routing -> 4 loop -> 5 context -> stack.
