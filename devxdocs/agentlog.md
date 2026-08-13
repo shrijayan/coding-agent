@@ -1472,3 +1472,133 @@ through the actual tool loop with the dedup fix in place. Also confirmed
 (both own `history_policy`). Did **not** run the notebook against a real
 API key (would cost real money) - that's still owed if you want to confirm
 the live-model prose reads well, not just that the code path works.
+
+### [2026-08-13] Notebook: re-applied Opt 2/3 restructure after pull --rebase
+
+User did `git pull --rebase` from main; the rebase pulled a newer upstream
+notebook (now 52 cells, adds Opt 4 Agent loop prevention + Opt 5 Context window)
+and dropped our earlier edits: order was back to Opt 2 = Model routing, Opt 3 =
+Cache-friendly, no tier table, no 2a/2b split. Re-applied our changes on top of
+the new upstream version.
+
+Changes (notebook only):
+- Swapped so the flow matches the deck: **Opt 2 = Prompt optimization & caching**
+  (2a Prompt optimization [conceptual - trim + cache prefix, groundwork], 2b
+  Cache-friendly prompts [live, with layer-by-volatility table]) -> **Opt 3 =
+  Model routing** (added the 3-tier table). Physically moved the cache block
+  above routing; kept the routing code cells (opt_routing, /metrics,
+  routing_report) in place and only rebuilt the intro.
+- Tier table uses the CURRENT models.yaml ladder pulled in by the rebase:
+  low `google/gemma-3.4b` 0.05/0.10, mid `qwen/qwen3.7-flash` 0.03/0.13, high
+  `deepseek/deepseek-v4-flash-0731` 0.08/0.252 (note: this main uses gemma, not
+  the mistral-nemo from the other branch's models.yaml - kept it consistent with
+  what's actually committed here).
+- Left Opt 4 (loop prevention) and Opt 5 (context window) untouched - we never
+  edited those. NOTE for user: the deck orders context-window (50) BEFORE
+  loop-prevention (60), but the notebook has loop-prevention as Opt 4 and
+  context-window as Opt 5; flagged, not changed (out of scope of our edits).
+
+Verified: valid JSON, 52 cells, 24 code cells, 0 parse errors, section flow
+1 summary -> 2 caching(2a/2b) -> 3 routing -> 4 loop -> 5 context -> stack.
+
+### [2026-08-13] Two observability tiers: lightweight in-memory + real OpenTelemetry
+
+Added monitoring as its own concern, split into two independently
+`--enable`-able tiers rather than one optimization, after working through
+what each is actually FOR: teaching the concept fast (zero setup, for
+100% of a live workshop room) vs. genuine hands-on exposure to real OTel
+tooling (worth real setup friction, but as an explicitly optional/advanced
+path, not something the whole room does live on the clock).
+
+**`observability`** (lightweight): mirrors every other optimization's "own
+tracker, own command, own per-turn line" shape. Needed a hook none of
+`OptimizationBundle`'s four fields provided - none of them see individual
+*tool* execution, only `wrap_llm_client` sees model calls - so added a 5th,
+symmetric hook: `wrap_tool_registry` (`Callable[[ToolExecutor], ToolExecutor]`,
+composes via the same `_compose` helper). `ToolExecutor` is a new `Protocol`
+in `tools/registry.py` (`definitions()` + `execute()`) - the same
+dependency-inversion move `LLMClient` already made for `wrap_llm_client`.
+`optimizations/observability.py`'s `ObservabilityTracker` records latency +
+success/failure for every LLM/tool call via two decorators that never
+swallow an error (record, then re-raise/return exactly what the inner call
+would have); `/observability` reports call counts, error rate, latency, a
+per-tool breakdown, and the most recent failures by name and message.
+
+**`observability-otel`** (advanced, separate optimization, composes with
+the above): real OpenTelemetry traces/metrics/logs exported to an actual
+Grafana. New deps: `opentelemetry-api`/`sdk`/`exporter-otlp-proto-http`
+(HTTP/protobuf, not gRPC - pure-Python, no `grpcio` native wheel, matters
+for the Windows/ARM-Mac workshop audience). Reuses the same
+`wrap_llm_client`/`wrap_tool_registry` hooks, but each call becomes a real
+span (`llm.call`/`tool.call`, marked error + a bridged stdlib-`logging`
+log record on failure) plus counter/histogram metrics via
+`_instruments()`. `build()` reads `Config.otel_exporter_otlp_endpoint`/
+`_headers` and fails fast (`MissingOtelEndpointError`) if unset - same "no
+silent defaults" rule as everywhere else - rather than silently exporting
+nowhere.
+
+Getting an endpoint took a long design detour before any code got
+written: a *shared* hosted backend (one Grafana for every attendee) was
+considered and explicitly rejected mid-design - concurrency, cross-attendee
+visibility, and hosting/ops burden. Confirmed via research (not assumed)
+that the workshop notebook runs on Colab's *hosted* runtime (`# /content
+on Colab`, `google.colab` secrets), which has zero network/filesystem
+access to an attendee's own machine - a hard platform boundary, so a
+purely local backend only works if Colab is first connected to a [local
+runtime](https://research.google.com/colaboratory/local-runtimes.html)
+(itself real setup: Jupyter + the Colab extension + Docker already
+installed - confirmed Colab's own docs, not stale memory). Landed on: every
+attendee gets their own fully isolated backend, no shared infra at all -
+**local** (`optimizations/observability_stack.py`'s
+`start_local_observability_stack()`, one Docker image `grafana/otel-lgtm`
+bundling a pre-wired Collector + Tempo + Prometheus + Loki + Grafana,
+idempotent start/reuse, OS-aware guidance when Docker's missing/not
+running) or **cloud** (attendee's own free Grafana Cloud stack - confirmed
+current free-tier limits via research: 50GB traces/logs, 10k metric
+series/mo, 14-day retention, no card - pastes the `OTEL_EXPORTER_OTLP_*`
+values its own "Configure" button generates). Both converge on the exact
+same two `Config` fields, so the instrumentation code never needs to know
+which one it's talking to.
+
+Notebook: rebased these two new sections onto the *latest* upstream
+notebook (52 cells, the Opt 2/3 caching-before-routing restructure landed
+in a separate "Refactor notebook" + "Update docs" commit pair after this
+branch forked) rather than the version this branch started from - located
+the insertion point by content (the cell whose source is exactly
+`opt_context["session"].context_report()`), not a hardcoded index, so it
+landed correctly right after context-window/before "Stack them" in the
+new ordering. "Optimization 6 - Observability" (lightweight, same
+markdown-intro -> `run_scenario` -> `compare` -> `/x_report()` pattern as
+every other section, plus a deterministic "debugging becomes easier" demo -
+ask it to read a file that provably doesn't exist, print `/usage` next to
+`/observability` on the same session to contrast "1 tool call happened"
+against "`read_file` failed on `does_not_exist_xyz.py` after 0ms") and
+"Optimization 7 - Advanced observability" (explicitly marked optional/
+skippable, local-path cell + cloud-path `EDIT ME` cell mirroring Step 3's
+style, conditional on an endpoint actually being set). Added to the "Stack
+them" `compare()` call and the final scoreboard `runs` list (lightweight
+tier only - the advanced tier's tokens/cost are identical to baseline by
+design, and its setup is conditional/optional, so it doesn't belong in an
+unconditional scoreboard row).
+
+Verified: `uv run pytest` (120 passed, up from 90), `ruff check` clean on
+every new/changed file, notebook JSON structurally valid (64 cells now,
+every code cell parses). Real end-to-end smoke tests, not just unit tests -
+Docker Engine is actually available in this environment (confirmed via
+`docker info`), so this got tested against a genuinely live stack: spun up
+a real `grafana/otel-lgtm` container, sent real spans/metrics through the
+actual OTLP/HTTP exporters, and confirmed `force_flush()` succeeded over
+the real network (not just that construction didn't throw). Confirmed a
+real failing tool call is recorded correctly by the lightweight tier
+through the actual `WorkshopSession`/`AgentLoop` machinery (no mocking of
+the tool registry itself). Confirmed `observability` +
+`observability-otel` + `hybrid-routing` all compose through the real CLI
+startup path with no `ConflictingOptimizationsError` (none of the three
+own `history_policy`). This dev machine happened to already be running an
+unrelated observability stack (`numad-*` containers) on the same default
+ports (4317/3000) - worked around by testing on alternate ports rather
+than touching those containers; the shipped code's defaults are unaffected.
+Did **not** verify the cloud path (Grafana Cloud) - no test account
+available in this environment - and did not run the notebook against a
+real model (no API key here) - both still owed, same caveat as every
+prior notebook change.

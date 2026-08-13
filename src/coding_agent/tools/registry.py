@@ -1,8 +1,25 @@
 """Holds every tool the agent knows about and dispatches calls by name."""
 
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from coding_agent.tools.base import Tool, ToolResult
+
+
+@runtime_checkable
+class ToolExecutor(Protocol):
+    """What `AgentLoop` actually needs from a tool registry: list the
+    available tools and run one by name.
+
+    `ToolRegistry` below is the real implementation; this Protocol is the
+    seam an optimization wraps (see `OptimizationBundle.wrap_tool_registry`)
+    to observe or change tool execution without `AgentLoop` needing to know
+    the difference - the same dependency-inversion move `LLMClient` already
+    makes for `wrap_llm_client`.
+    """
+
+    def definitions(self) -> list[dict[str, Any]]: ...
+
+    def execute(self, name: str, tool_input: dict[str, Any]) -> ToolResult: ...
 
 
 class ToolRegistry:

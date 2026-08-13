@@ -20,7 +20,7 @@ from coding_agent.tools.bash import BashTool
 from coding_agent.tools.edit_file import EditFileTool
 from coding_agent.tools.list_files import ListFilesTool
 from coding_agent.tools.read_file import ReadFileTool
-from coding_agent.tools.registry import ToolRegistry
+from coding_agent.tools.registry import ToolExecutor, ToolRegistry
 from coding_agent.tools.write_file import WriteFileTool
 
 
@@ -56,7 +56,7 @@ def build_agent(
     if pricing is not None and config.session_cost_cap_usd is not None:
         cost_guard = CostGuard(pricing, config.session_cost_cap_usd)
 
-    tool_registry = ToolRegistry(
+    tool_registry: ToolExecutor = ToolRegistry(
         tools=[
             ReadFileTool(),
             WriteFileTool(),
@@ -66,6 +66,9 @@ def build_agent(
             *(optimizations.extra_tools or []),
         ]
     )
+    if optimizations.wrap_tool_registry is not None:
+        tool_registry = optimizations.wrap_tool_registry(tool_registry)
+
     return AgentLoop(
         llm_client=llm_client,
         tool_registry=tool_registry,

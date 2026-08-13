@@ -17,6 +17,8 @@ from coding_agent.optimizations import (
     conversation_summary,
     hybrid_routing,
     loop_guard,
+    observability,
+    observability_otel,
 )
 from coding_agent.optimizations.bundle import OptimizationBundle
 
@@ -26,4 +28,6 @@ AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
     "cache-friendly-prompts": cache_friendly.build,
     "loop-guard": loop_guard.build,
     "context-window": context_window.build,
+    "observability": observability.build,
+    "observability-otel": observability_otel.build,
 }

@@ -18,7 +18,7 @@ from coding_agent.llm.base import LLMClient
 from coding_agent.metrics.cost_guard import CostGuard
 from coding_agent.metrics.usage import UsageTracker
 from coding_agent.optimizations.history_policy import HistoryContext, HistoryPolicy
-from coding_agent.tools.registry import ToolRegistry
+from coding_agent.tools.registry import ToolExecutor
 
 # Called as on_tool_call(tool_name, tool_input) right before each tool runs,
 # so the CLI can show the user what's happening. Optional - the loop works
@@ -41,7 +41,7 @@ class AgentLoop:
     def __init__(
         self,
         llm_client: LLMClient,
-        tool_registry: ToolRegistry,
+        tool_registry: ToolExecutor,
         system_prompt: str,
         max_iterations: int,
         usage_tracker: UsageTracker,

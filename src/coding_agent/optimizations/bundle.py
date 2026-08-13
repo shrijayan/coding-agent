@@ -15,6 +15,10 @@ kinds of extension points this project's abstractions naturally support:
   optimization whose mechanism is "give the model a new capability it can
   invoke on demand" rather than passively changing an existing call, e.g.
   loading reference material only when the model asks for it.
+- wrap_tool_registry: wraps the ToolExecutor (tools/registry.py's
+  Protocol) to add behavior around every *tool* call - observability
+  (latency/error tracking per tool), tool-level caching, ... the same
+  Decorator move as wrap_llm_client, one level down.
 
 Every field defaults to None ("no change from the base agent") - an
 optimization only sets the field(s) relevant to what it actually does.
@@ -26,6 +30,7 @@ from dataclasses import dataclass
 from coding_agent.llm.base import LLMClient
 from coding_agent.optimizations.history_policy import HistoryPolicy
 from coding_agent.tools.base import Tool
+from coding_agent.tools.registry import ToolExecutor
 
 
 class ConflictingOptimizationsError(RuntimeError):
@@ -44,13 +49,14 @@ class OptimizationBundle:
     wrap_llm_client: Callable[[LLMClient], LLMClient] | None = None
     system_prompt_suffix: str | None = None
     extra_tools: list[Tool] | None = None
+    wrap_tool_registry: Callable[[ToolExecutor], ToolExecutor] | None = None
 
     def merged_with(self, other: "OptimizationBundle") -> "OptimizationBundle":
         """Combine this bundle with another enabled optimization's bundle.
 
-        - wrap_llm_client: both compose (chained, this one's wrapper
-          applied around the other's) - e.g. caching AND model routing
-          enabled together both take effect.
+        - wrap_llm_client / wrap_tool_registry: both compose (chained,
+          this one's wrapper applied around the other's) - e.g. caching
+          AND model routing enabled together both take effect.
         - system_prompt_suffix: both concatenate.
         - extra_tools: both concatenate - tools are additive, not a single-
           owner aspect like history_policy, so two optimizations each
@@ -73,6 +79,9 @@ class OptimizationBundle:
                 self.system_prompt_suffix, other.system_prompt_suffix
             ),
             extra_tools=_concat_tools(self.extra_tools, other.extra_tools),
+            wrap_tool_registry=_compose(
+                self.wrap_tool_registry, other.wrap_tool_registry
+            ),
         )
 
 

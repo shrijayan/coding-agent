@@ -264,19 +264,79 @@ to it:
   difficulty score, quality-gate outcome, model latency, cost
   (`_format_routing_summary`) - because difficulty and gate results only
   exist when routing is active.
-- `--enable cache-friendly-prompts` / `loop-guard` / `context-window`: an
-  *extra* line each, printed alongside whichever line above (they can all
-  be enabled together) - stable-prefix size and reuse % (`/cache`,
-  `_format_cache_summary`), repeat streak/nudges/halts (`/loopguard`,
-  `_format_loop_guard_summary`), and outputs pruned/skills loaded
-  (`/context`, `_format_context_summary`) respectively - silent on a turn
-  where that mode's mechanism didn't actually do anything.
+- `--enable cache-friendly-prompts` / `loop-guard` / `context-window` /
+  `observability`: an *extra* line each, printed alongside whichever line
+  above (they can all be enabled together) - stable-prefix size and
+  reuse % (`/cache`, `_format_cache_summary`), repeat streak/nudges/halts
+  (`/loopguard`, `_format_loop_guard_summary`), outputs pruned/skills
+  loaded (`/context`, `_format_context_summary`), and call count/avg
+  latency/flagged errors (`/observability`, `_format_observability_summary`)
+  respectively - silent on a turn where that mode's mechanism didn't
+  actually do anything.
 
 If you build an optimization that introduces its own mode with its own
 extra signals (the way hybrid-routing has difficulty/gate data), give it
 its own per-turn line in `cli.py` showing only the fields relevant to
 that mode - don't leave the user with no per-turn feedback, and don't
 pad a generic line with fields that are meaningless in your mode.
+(`observability-otel`, below, deliberately has no per-turn line - its
+data doesn't live in this process, so there's nothing turn-specific to
+print; `/observability-otel` just says where to go look.)
+
+## Observability
+
+Two separate tiers, both answering "how long did each call take, which
+tool call failed, and where exactly" - the gap `/usage`'s aggregate
+counts don't cover. Compose freely with anything else (neither owns
+`history_policy`).
+
+**`--enable observability`** - the lightweight tier. Zero setup, in-memory,
+this session only. `optimizations/observability.py`'s `ObservabilityTracker`
+records every LLM/tool call's latency and success/failure via the same
+`wrap_llm_client` + `wrap_tool_registry` hooks documented above; `/observability`
+prints call counts, error rate, latency, a per-tool breakdown, and the
+most recent failures by name and message.
+
+**`--enable observability-otel`** - the advanced tier: real OpenTelemetry
+traces, metrics, and logs exported to an actual Grafana. Deliberately not
+"just works" - it needs somewhere to export to, and Google Colab's hosted
+runtime (which `notebooks/optimizing_llm_apps.ipynb` runs on) has **zero**
+network/filesystem access to your own machine, so a purely local backend
+is only reachable if you first connect Colab to a
+[local runtime](https://research.google.com/colaboratory/local-runtimes.html)
+(itself real local setup: Jupyter + the Colab extension + Docker already
+installed). Two ways to get an endpoint, both giving *you* your own fully
+isolated backend (no shared infra, no cross-attendee visibility):
+
+- **Local**: `optimizations/observability_stack.py`'s
+  `start_local_observability_stack()` runs one Docker image
+  (`grafana/otel-lgtm` - a pre-wired Collector + Tempo + Prometheus + Loki
+  + Grafana) and points the optimization at `http://localhost:4318`.
+  Callable from a plain script or (once connected to a local runtime) a
+  notebook cell - same function either way, since it just checks whether
+  `docker` is reachable and explains itself clearly if not.
+- **Cloud**: sign up for your own free Grafana Cloud stack, click
+  "Configure" on its OpenTelemetry connection tile, and set the two
+  values it generates: `OTEL_EXPORTER_OTLP_ENDPOINT` and (if your stack
+  needs auth) `OTEL_EXPORTER_OTLP_HEADERS` (comma-separated `key=value`
+  pairs, values percent-encoded - the exact format Grafana generates).
+
+Both converge on those same two `Config` fields - `build()` in
+`optimizations/observability_otel.py` never needs to know which one it's
+talking to, and fails fast (`MissingOtelEndpointError`) if neither is set,
+same "no silent defaults" rule as everywhere else. Always OTLP/HTTP, never
+gRPC, on purpose - pure-Python, no `grpcio` native wheel to install, which
+matters for the Windows/ARM-Mac audience this is built for. `/observability-otel`
+doesn't try to replicate a dashboard in text - it just confirms tracing is
+active and prints where to go look (the local Grafana URL, or a reminder
+to open your own Grafana Cloud stack).
+
+**Deliberate failure demo.** Ask the agent to read a file that provably
+doesn't exist. Compare `/usage` (shows a tool call happened, nothing about
+whether it worked) against `/observability` or the trace in Grafana (names
+the exact tool, the exact error, and how long it took to fail) - that
+contrast is the actual debugging payoff either tier exists for.
+
 ## How to add a new optimization
 
 This project is the shared **Base Agent** for a workshop where several
@@ -290,7 +350,7 @@ a new one.
 
 ### Step 1: figure out which hook(s) you need
 
-An `OptimizationBundle` has four fields. Set only the one(s) relevant
+An `OptimizationBundle` has five fields. Set only the one(s) relevant
 to what your optimization actually changes - most optimizations need
 exactly one, though a bigger one can combine several (`context-window`
 sets three: see `optimizations/context_window.py`):
@@ -301,6 +361,7 @@ sets three: see `optimizations/context_window.py`):
 | `wrap_llm_client` | changes something about the model call itself | caching, model routing, inference parameters (top_p/top_k), loop guard |
 | `system_prompt_suffix` | is really just an instruction to the model | prompt optimization, output length/style control, a skills menu |
 | `extra_tools` | gives the model a new capability it can invoke on demand | loading reference material only when asked for (see `optimizations/context_window.py` + `tools/load_skill.py`) |
+| `wrap_tool_registry` | changes something about how a tool call is executed | latency/error tracking per tool (see `optimizations/observability.py` / `observability_otel.py`), tool-level caching |
 
 `extra_tools` is additive (a `list[Tool]`, concatenated across enabled
 optimizations) - unlike `history_policy`, it's never a conflict for two
@@ -343,6 +404,26 @@ class YourWrapper(LLMClient):
     def send(self, *, system: str, messages: list[Message], tools: list[dict]) -> LLMResponse:
         # Do something before/instead of/after calling the real client:
         return self._inner.send(system=system, messages=messages, tools=tools)
+```
+
+**If you set `wrap_tool_registry`** - `ToolExecutor` (`tools/registry.py`)
+is a Protocol (`definitions()` + `execute()`), so wrapping it is the same
+Decorator move one level down from `wrap_llm_client`:
+
+```python
+from coding_agent.tools.base import ToolResult
+from coding_agent.tools.registry import ToolExecutor
+
+class YourToolWrapper:
+    def __init__(self, inner: ToolExecutor) -> None:
+        self._inner = inner
+
+    def definitions(self) -> list[dict]:
+        return self._inner.definitions()
+
+    def execute(self, name: str, tool_input: dict) -> ToolResult:
+        # Do something before/instead of/after running the real tool:
+        return self._inner.execute(name, tool_input)
 ```
 
 **If you set `system_prompt_suffix`** - just write the instruction text
@@ -391,14 +472,15 @@ the registry, unchanged.
 ### Combining optimizations
 
 `--enable a,b` (or `--enable a --enable b`) combines both bundles
-automatically (`OptimizationBundle.merged_with`): `wrap_llm_client`
-wrappers chain (both take effect, first-enabled applied outermost),
-`system_prompt_suffix` values concatenate. `history_policy` has only
-one owner at a time - if two enabled optimizations both set one,
-`ConflictingOptimizationsError` is raised rather than one silently
-winning. If your optimization and someone else's both need to control
-history, that's a real design conversation to have, not something to
-resolve by picking whichever runs last.
+automatically (`OptimizationBundle.merged_with`): `wrap_llm_client` and
+`wrap_tool_registry` wrappers each chain (both take effect,
+first-enabled applied outermost), `system_prompt_suffix` values
+concatenate. `history_policy` has only one owner at a time - if two
+enabled optimizations both set one, `ConflictingOptimizationsError` is
+raised rather than one silently winning. If your optimization and
+someone else's both need to control history, that's a real design
+conversation to have, not something to resolve by picking whichever
+runs last.
 
 ## Benchmark
 

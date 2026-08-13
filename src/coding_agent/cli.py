@@ -16,6 +16,8 @@ from coding_agent.commands.cache_command import PromptCacheCommand
 from coding_agent.commands.context_command import ContextWindowCommand
 from coding_agent.commands.loop_guard_command import LoopGuardCommand
 from coding_agent.commands.metrics_command import RoutingMetricsCommand
+from coding_agent.commands.observability_command import ObservabilityCommand
+from coding_agent.commands.observability_otel_command import ObservabilityOtelCommand
 from coding_agent.commands.registry import SlashCommandRegistry
 from coding_agent.commands.usage_command import UsageCommand
 from coding_agent.config import Config, MissingConfigError
@@ -32,6 +34,8 @@ from coding_agent.optimizations import (
     context_window,
     hybrid_routing,
     loop_guard,
+    observability,
+    observability_otel,
 )
 from coding_agent.optimizations.available import AVAILABLE_OPTIMIZATIONS
 from coding_agent.optimizations.bundle import ConflictingOptimizationsError
@@ -40,6 +44,7 @@ from coding_agent.optimizations.context_window import (
     ContextWindowTracker,
 )
 from coding_agent.optimizations.loop_guard import LoopGuardRecord, LoopGuardTracker
+from coding_agent.optimizations.observability import CallRecord, ObservabilityTracker
 from coding_agent.optimizations.prompt_cache.metrics import (
     PromptCacheRecord,
     PromptCacheTracker,
@@ -56,6 +61,8 @@ _HYBRID_ROUTING = "hybrid-routing"
 _CACHE_FRIENDLY = "cache-friendly-prompts"
 _LOOP_GUARD = "loop-guard"
 _CONTEXT_WINDOW = "context-window"
+_OBSERVABILITY = "observability"
+_OBSERVABILITY_OTEL = "observability-otel"
 
 # Terminal colors: the agent's answer is green, the user's prompt/input white,
 # and every auxiliary line (turn/routing/cache summaries, tool calls, warnings,
@@ -153,6 +160,16 @@ def run() -> None:
     if _CONTEXT_WINDOW in args.enabled_optimizations:
         context_tracker = context_window.get_tracker()
 
+    observability_tracker: ObservabilityTracker | None = None
+    if _OBSERVABILITY in args.enabled_optimizations:
+        observability_tracker = observability.get_tracker()
+
+    observability_otel_command: ObservabilityOtelCommand | None = None
+    if _OBSERVABILITY_OTEL in args.enabled_optimizations:
+        observability_otel_command = ObservabilityOtelCommand(
+            status=observability_otel.get_status()
+        )
+
     commands = [
         UsageCommand(
             tracker=usage_tracker,
@@ -175,6 +192,10 @@ def run() -> None:
         commands.append(LoopGuardCommand(tracker=loop_guard_tracker))
     if context_tracker is not None:
         commands.append(ContextWindowCommand(tracker=context_tracker))
+    if observability_tracker is not None:
+        commands.append(ObservabilityCommand(tracker=observability_tracker))
+    if observability_otel_command is not None:
+        commands.append(observability_otel_command)
 
     command_registry = SlashCommandRegistry(commands=commands)
 
@@ -210,6 +231,9 @@ def run() -> None:
         cache_mark = len(cache_tracker.records) if cache_tracker else 0
         loop_guard_mark = len(loop_guard_tracker.records) if loop_guard_tracker else 0
         context_mark = len(context_tracker.events) if context_tracker else 0
+        observability_mark = (
+            len(observability_tracker.records) if observability_tracker else 0
+        )
         # Same snapshot idea for the plain-mode turn summary: diff the
         # usage tracker before/after rather than instrumenting the loop.
         calls_before = usage_tracker.llm_calls
@@ -257,6 +281,13 @@ def run() -> None:
             context_summary = _format_context_summary(context_tracker.events[context_mark:])
             if context_summary:
                 print(f"{_color(context_summary, _YELLOW)}\n")
+
+        if observability_tracker is not None:
+            observability_summary = _format_observability_summary(
+                observability_tracker.records[observability_mark:]
+            )
+            if observability_summary:
+                print(f"{_color(observability_summary, _YELLOW)}\n")
 
 
 def _format_cache_summary(records: list[PromptCacheRecord]) -> str:
@@ -311,6 +342,25 @@ def _format_context_summary(events: list[ContextWindowEvent]) -> str:
     if skills:
         parts.append("skills loaded: " + ", ".join(skills))
     return "  \u21b3 context: " + " \u00b7 ".join(parts)
+
+
+def _format_observability_summary(records: list[CallRecord]) -> str:
+    """One compact annotation for a turn's observability data: call count,
+    average latency, and - the actual debugging payoff - any errors from
+    *this turn* flagged inline, by name, so a problem is visible right
+    where it happened instead of only in /observability."""
+    if not records:
+        return ""
+    avg_latency = sum(r.latency_ms for r in records) / len(records)
+    parts = [f"{len(records)} calls", f"avg {avg_latency:.0f}ms"]
+
+    errors = [r for r in records if not r.success]
+    if errors:
+        detail = errors[-1]
+        label = detail.name or "(no model - call failed)"
+        parts.append(f"{len(errors)} error(s): {label}")
+
+    return "  ↳ observability: " + " · ".join(parts)
 
 
 def _format_turn_summary(

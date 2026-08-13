@@ -71,6 +71,17 @@ class Config:
     context_prune_min_chars_to_prune: int
     routing_ollama_base_url: str
     routing_quality_gate_enabled: bool
+    otel_exporter_otlp_endpoint: str | None
+    """Only used with --enable observability-otel: where to export real OTel
+    traces/metrics/logs (OTLP/HTTP). Point it at a local Docker stack
+    (http://localhost:4318, see optimizations/observability_stack.py) or
+    your own Grafana Cloud OTLP gateway. None means the optimization fails
+    fast rather than silently not exporting anywhere - see its build()."""
+    otel_exporter_otlp_headers: str | None
+    """Comma-separated key=value pairs (the exact format Grafana Cloud's
+    "Configure" button generates for OTEL_EXPORTER_OTLP_HEADERS) - e.g. an
+    Authorization header for a cloud backend. None/blank for the local
+    Docker path, which needs no auth."""
     session_cost_cap_usd: float | None
     """Stop making LLM calls once a session's estimated cost crosses this
     (USD), or None to disable the cap. Sourced from models.yaml so the
@@ -128,6 +139,8 @@ class Config:
             routing_quality_gate_enabled=_optional_bool(
                 "AGENT_ROUTING_QUALITY_GATE_ENABLED", gate_enabled
             ),
+            otel_exporter_otlp_endpoint=_optional_str("OTEL_EXPORTER_OTLP_ENDPOINT"),
+            otel_exporter_otlp_headers=_optional_str("OTEL_EXPORTER_OTLP_HEADERS"),
             session_cost_cap_usd=_resolve_cost_cap(load_session_cost_cap(raw)),
             available_provider_keys=_available_provider_keys(),
         )
