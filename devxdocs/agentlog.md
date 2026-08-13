@@ -1691,3 +1691,5 @@ changes.
 [2026-08-14] Notebook: merged ALL setup cells (title intro, clone, install, config, sanity check, measurement harness, run_scenario) into ONE collapsed code cell + one minimal title markdown. First visible section is now "Meet the base agent". Setup flow: run the single setup cell -> it prompts for provider/model, reads Colab secret, installs, pings. 53 cells total, all code collapsed.
 
 [2026-08-14] Notebook: added key registration flow - title cell now points users to https://key-distribution.vercel.app/w/G04eDpFeZl3DfKBy5uHtYA to register their email and get an OpenRouter key. Setup cell now asks (in order): provider -> model -> paste API key (input prompt showing the register link). Colab secret is still read automatically first if present, else the paste prompt appears.
+
+[2026-08-14] Notebook: simplified setup - removed provider/model prompts entirely. Provider fixed to openrouter, model fixed to deepseek/deepseek-v4-flash-0731. Setup cell now asks for ONLY the OpenRouter API key (Colab secret read automatically first, else paste prompt with register link).
