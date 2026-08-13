@@ -13,12 +13,15 @@ from typing import Any
 from coding_agent.agent.factory import build_agent
 from coding_agent.cli_args import parse_args
 from coding_agent.commands.cache_command import PromptCacheCommand
+from coding_agent.commands.compression_command import CompressionCommand
 from coding_agent.commands.context_command import ContextWindowCommand
+from coding_agent.commands.dedup_command import DedupCommand
 from coding_agent.commands.loop_guard_command import LoopGuardCommand
 from coding_agent.commands.metrics_command import RoutingMetricsCommand
 from coding_agent.commands.observability_command import ObservabilityCommand
 from coding_agent.commands.observability_otel_command import ObservabilityOtelCommand
 from coding_agent.commands.registry import SlashCommandRegistry
+from coding_agent.commands.tool_filter_command import ToolFilterCommand
 from coding_agent.commands.usage_command import UsageCommand
 from coding_agent.config import Config, MissingConfigError
 from coding_agent.llm.base import LLMError
@@ -32,10 +35,13 @@ from coding_agent.models_config import (
 from coding_agent.optimizations import (
     cache_friendly,
     context_window,
+    deduplication,
     hybrid_routing,
     loop_guard,
     observability,
     observability_otel,
+    prompt_compression,
+    tool_filtering,
 )
 from coding_agent.optimizations.available import AVAILABLE_OPTIMIZATIONS
 from coding_agent.optimizations.bundle import ConflictingOptimizationsError
@@ -43,11 +49,16 @@ from coding_agent.optimizations.context_window import (
     ContextWindowEvent,
     ContextWindowTracker,
 )
+from coding_agent.optimizations.deduplication import DedupRecord, DedupTracker
 from coding_agent.optimizations.loop_guard import LoopGuardRecord, LoopGuardTracker
 from coding_agent.optimizations.observability import CallRecord, ObservabilityTracker
 from coding_agent.optimizations.prompt_cache.metrics import (
     PromptCacheRecord,
     PromptCacheTracker,
+)
+from coding_agent.optimizations.prompt_compression import (
+    CompressionRecord,
+    CompressionTracker,
 )
 from coding_agent.optimizations.registry import (
     OptimizationRegistry,
@@ -55,12 +66,19 @@ from coding_agent.optimizations.registry import (
 )
 from coding_agent.optimizations.routing.metrics import RoutingRecord, RoutingTracker
 from coding_agent.optimizations.routing.tiers import InvalidTierConfigError, load_tiers
+from coding_agent.optimizations.tool_filtering import (
+    ToolFilterRecord,
+    ToolFilterTracker,
+)
 
 _EXIT_COMMANDS = {"exit", "quit"}
 _HYBRID_ROUTING = "hybrid-routing"
 _CACHE_FRIENDLY = "cache-friendly-prompts"
 _LOOP_GUARD = "loop-guard"
 _CONTEXT_WINDOW = "context-window"
+_TOOL_FILTERING = "tool-filtering"
+_PROMPT_COMPRESSION = "prompt-compression"
+_DEDUPLICATION = "deduplication"
 _OBSERVABILITY = "observability"
 _OBSERVABILITY_OTEL = "observability-otel"
 
@@ -160,6 +178,18 @@ def run() -> None:
     if _CONTEXT_WINDOW in args.enabled_optimizations:
         context_tracker = context_window.get_tracker()
 
+    tool_filter_tracker: ToolFilterTracker | None = None
+    if _TOOL_FILTERING in args.enabled_optimizations:
+        tool_filter_tracker = tool_filtering.get_tracker()
+
+    compression_tracker: CompressionTracker | None = None
+    if _PROMPT_COMPRESSION in args.enabled_optimizations:
+        compression_tracker = prompt_compression.get_tracker()
+
+    dedup_tracker: DedupTracker | None = None
+    if _DEDUPLICATION in args.enabled_optimizations:
+        dedup_tracker = deduplication.get_tracker()
+
     observability_tracker: ObservabilityTracker | None = None
     if _OBSERVABILITY in args.enabled_optimizations:
         observability_tracker = observability.get_tracker()
@@ -192,6 +222,12 @@ def run() -> None:
         commands.append(LoopGuardCommand(tracker=loop_guard_tracker))
     if context_tracker is not None:
         commands.append(ContextWindowCommand(tracker=context_tracker))
+    if tool_filter_tracker is not None:
+        commands.append(ToolFilterCommand(tracker=tool_filter_tracker))
+    if compression_tracker is not None:
+        commands.append(CompressionCommand(tracker=compression_tracker))
+    if dedup_tracker is not None:
+        commands.append(DedupCommand(tracker=dedup_tracker))
     if observability_tracker is not None:
         commands.append(ObservabilityCommand(tracker=observability_tracker))
     if observability_otel_command is not None:
@@ -231,6 +267,13 @@ def run() -> None:
         cache_mark = len(cache_tracker.records) if cache_tracker else 0
         loop_guard_mark = len(loop_guard_tracker.records) if loop_guard_tracker else 0
         context_mark = len(context_tracker.events) if context_tracker else 0
+        tool_filter_mark = (
+            len(tool_filter_tracker.records) if tool_filter_tracker else 0
+        )
+        compression_mark = (
+            len(compression_tracker.records) if compression_tracker else 0
+        )
+        dedup_mark = len(dedup_tracker.records) if dedup_tracker else 0
         observability_mark = (
             len(observability_tracker.records) if observability_tracker else 0
         )
@@ -281,6 +324,29 @@ def run() -> None:
             context_summary = _format_context_summary(context_tracker.events[context_mark:])
             if context_summary:
                 print(f"{_color(context_summary, _YELLOW)}\n")
+
+        # The three prompt-optimization modes each print their own line too,
+        # silent on a turn where their mechanism didn't actually do anything.
+        if tool_filter_tracker is not None:
+            tool_filter_summary = _format_tool_filter_summary(
+                tool_filter_tracker.records[tool_filter_mark:]
+            )
+            if tool_filter_summary:
+                print(f"{_color(tool_filter_summary, _YELLOW)}\n")
+
+        if compression_tracker is not None:
+            compression_summary = _format_compression_summary(
+                compression_tracker.records[compression_mark:]
+            )
+            if compression_summary:
+                print(f"{_color(compression_summary, _YELLOW)}\n")
+
+        if dedup_tracker is not None:
+            dedup_summary = _format_dedup_summary(
+                dedup_tracker.records[dedup_mark:]
+            )
+            if dedup_summary:
+                print(f"{_color(dedup_summary, _YELLOW)}\n")
 
         if observability_tracker is not None:
             observability_summary = _format_observability_summary(
@@ -361,6 +427,52 @@ def _format_observability_summary(records: list[CallRecord]) -> str:
         parts.append(f"{len(errors)} error(s): {label}")
 
     return "  ↳ observability: " + " · ".join(parts)
+
+
+def _format_tool_filter_summary(records: list[ToolFilterRecord]) -> str:
+    """One compact annotation for a turn's tool filtering: how many tool
+    definitions were withheld across the turn's sends, and which. Silent
+    when nothing was withheld - the safe fallback kept everything."""
+    withheld: dict[str, int] = {}
+    for record in records:
+        for name in record.filtered_names:
+            withheld[name] = withheld.get(name, 0) + 1
+    if not withheld:
+        return ""
+    total = sum(withheld.values())
+    names = ", ".join(sorted(withheld))
+    return (
+        f"  \u21b3 tool-filter: {len(records)} sends \u00b7 "
+        f"withheld {total} definition(s) ({names})"
+    )
+
+
+def _format_compression_summary(records: list[CompressionRecord]) -> str:
+    """One compact annotation for a turn's prompt compression: the
+    deterministic size cut applied to every send this turn. Token effect
+    is /usage's job - these are byte facts about text we swapped."""
+    if not records:
+        return ""
+    latest = records[-1]
+    return (
+        f"  \u21b3 compression: {len(records)} sends \u00b7 "
+        f"system {latest.system_chars_before:,}->{latest.system_chars_after:,} chars \u00b7 "
+        f"tool docs {latest.tool_chars_before:,}->{latest.tool_chars_after:,} chars"
+    )
+
+
+def _format_dedup_summary(records: list[DedupRecord]) -> str:
+    """One compact annotation for a turn's deduplication: duplicates
+    replaced and their size. Silent on a turn with no duplicates - most
+    turns, since exact repeats only happen when content is revisited."""
+    if not records:
+        return ""
+    chars = sum(record.chars_removed for record in records)
+    plural = "s" if len(records) != 1 else ""
+    return (
+        f"  \u21b3 dedup: replaced {len(records)} duplicate{plural} "
+        f"({chars:,} chars)"
+    )
 
 
 def _format_turn_summary(

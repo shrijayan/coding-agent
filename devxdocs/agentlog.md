@@ -1602,3 +1602,81 @@ Did **not** verify the cloud path (Grafana Cloud) - no test account
 available in this environment - and did not run the notebook against a
 real model (no API key here) - both still owed, same caveat as every
 prior notebook change.
+
+## [2026-08-13] Prompt optimization as the five-technique family (3 new optimizations)
+
+Reframed "prompt optimization" across repo -> notebook -> deck as a family
+of five techniques - context pruning, conversation summarization, tool
+filtering, prompt compression, deduplication - and implemented the three
+that didn't exist, so all five are now live behind their own flags.
+Caching content stays in 2b (cache-friendly prompts); 2a is now purely
+the token-reduction family.
+
+New optimizations (all `wrap_llm_client` decorators, so they compose with
+everything - no `history_policy` conflicts):
+- `tool-filtering` (optimizations/tool_filtering.py): withholds the
+  action tools (write_file/edit_file/bash) from sends whose latest user
+  message shows no matching intent, via word-boundary keyword heuristics
+  (free, local - same stance as routing's difficulty scorer). Safety
+  rules, in priority order: exploration tools (read_file/list_files) and
+  unknown/extra tools (e.g. load_skill) are never withheld; a tool
+  already used this turn's loop stays exposed; no confident match ->
+  all tools kept. /toolfilter + `_format_tool_filter_summary`.
+- `prompt-compression` (optimizations/prompt_compression.py): swaps in
+  hand-tightened SYSTEM_PROMPT_COMPACT (new, in system_prompt.py, 925 ->
+  480 chars) + compact tool descriptions at the send boundary.
+  Deliberately deterministic - a human tightened the text once, reviewed
+  for equal meaning; never an LLM rewriting at runtime (tokens to save
+  tokens, silent meaning drift). Substring-replaces exactly SYSTEM_PROMPT
+  inside the outgoing system string so suffixes appended by other
+  optimizations (context-window's skills menu) pass through; unknown
+  tools keep their original descriptions. /compression + per-turn line.
+- `deduplication` (optimizations/deduplication.py): keeps the first
+  occurrence of any text block >= AGENT_DEDUP_MIN_CHARS (new required
+  env knob, default 200 in .env.example) and replaces later *exact*
+  duplicates (tool results, repeated pasted instructions) with a marker
+  naming what it duplicates and its size. Exact string match only, no
+  similarity; no message ever removed, tool_use/tool_result pairing and
+  is_error flags untouched; AgentLoop's own history untouched (send-
+  boundary copy only). /dedup + per-turn line.
+
+Notebook: 2a rewritten as the five-technique taxonomy table (each flag +
+where measured, cross-refs to Opt 1/Opt 5 as the two history-policy
+members); new "anatomy of a request" cell prints the REAL system prompt
+(both variants), a real tool definition, and a sample conversation run
+through the repo's own PromptBuilder - stable/semi-stable/dynamic layers
+in real bytes with the stable-prefix hash (verified against the real
+API: 88% stable share on the sample). Three new scenario+report cells
+(same run_scenario/compare pattern); caching prose (cache-hit ~10%
+billing, volatility table) consolidated into 2b's markdown; DEMO_PROMPTS
+gained a 6th verification turn ("Read calculator.py and
+test_calculator.py again...") so dedup has an honest, natural trigger
+(re-reading unchanged files) and tool filtering a read-only turn -
+same fixed set for every scenario, so comparisons stay fair. Stack cell
+now runs six flags; scoreboard includes the three new runs.
+
+Deck: slide 30 stays hybrid per request - new pc-family sub-slide (five
+cards + flags, blue = history-policy members, turmeric = wrappers),
+pc-sep split pills (optimization live / caching in progress), pc-plan
+cards updated, pc-concept kicker now "Prompt caching"; intro + closing
+status rows for "Prompt optimization & caching" flipped to live.
+
+AGENTS.md: new "Prompt optimization (the five-technique family)" section,
+module map + per-turn-summary list extended. Config: dedup_min_chars
+(fail-fast _require_int, same as every knob); notebook config cell
+setdefaults it; the three existing build()-test env helpers gained the
+new var.
+
+Verified: uv run pytest 147 passed (was 120; +27 across
+test_tool_filtering/test_prompt_compression/test_deduplication - fakes
+only, no HTTP); real CLI startup with all four
+prompt-optimization-adjacent flags combined (prompt-compression,
+deduplication,tool-filtering,cache-friendly-prompts) - no conflict; one
+real OpenRouter turn through the wrappers (per-turn compression line +
+/compression agree: system 925->480, tool docs 791->455 chars); anatomy
+cell logic exercised against the real PromptBuilder. Local .env gained
+the four knobs it was missing (predates loop-guard/context-window) plus
+AGENT_DEDUP_MIN_CHARS. Not verified: full notebook run against a live
+model end-to-end (baseline + 9 scenarios costs real money), and the
+benchmark with the new flags - both owed, same caveat as prior notebook
+changes.

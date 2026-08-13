@@ -212,6 +212,7 @@ def test_build_returns_bundle_with_all_three_hooks(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_LOOP_GUARD_HALT_AFTER", "4")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES", "6")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE", "400")
+    monkeypatch.setenv("AGENT_DEDUP_MIN_CHARS", "200")
     bundle = context_window.build()
 
     assert bundle.history_policy is not None

@@ -15,10 +15,13 @@ from coding_agent.optimizations import (
     cache_friendly,
     context_window,
     conversation_summary,
+    deduplication,
     hybrid_routing,
     loop_guard,
     observability,
     observability_otel,
+    prompt_compression,
+    tool_filtering,
 )
 from coding_agent.optimizations.bundle import OptimizationBundle
 
@@ -28,6 +31,9 @@ AVAILABLE_OPTIMIZATIONS: dict[str, Callable[[], OptimizationBundle]] = {
     "cache-friendly-prompts": cache_friendly.build,
     "loop-guard": loop_guard.build,
     "context-window": context_window.build,
+    "tool-filtering": tool_filtering.build,
+    "prompt-compression": prompt_compression.build,
+    "deduplication": deduplication.build,
     "observability": observability.build,
     "observability-otel": observability_otel.build,
 }

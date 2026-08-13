@@ -77,7 +77,10 @@ src/coding_agent/
 │   ├── registry.py           # SlashCommandRegistry - looks up and runs commands by name
 │   ├── usage_command.py       # /usage - prints tokens, cost, call counts for the session
 │   ├── loop_guard_command.py    # /loopguard - repeats seen, nudges, halts this session
-│   └── context_command.py        # /context - tool output pruned, skills loaded this session
+│   ├── context_command.py        # /context - tool output pruned, skills loaded this session
+│   ├── tool_filter_command.py     # /toolfilter - tool definitions withheld this session
+│   ├── compression_command.py      # /compression - prompt sizes before/after this session
+│   └── dedup_command.py             # /dedup - duplicate blocks replaced this session
 ├── optimizations/
 │   ├── bundle.py             # OptimizationBundle - what one optimization changes, + merge logic
 │   ├── registry.py            # OptimizationRegistry - resolves --enable names into a bundle
@@ -86,6 +89,9 @@ src/coding_agent/
 │   ├── history_utils.py          # safe_keep_from() - shared "never split a tool_use/tool_result pair" cut logic
 │   ├── loop_guard.py              # --enable loop-guard: detect a repeated failing tool call, nudge then halt
 │   ├── context_window.py           # --enable context-window: prune stale tool output + on-demand skills
+│   ├── tool_filtering.py            # --enable tool-filtering: expose only tools relevant to the request
+│   ├── prompt_compression.py         # --enable prompt-compression: hand-tightened system prompt + tool docs
+│   ├── deduplication.py               # --enable deduplication: replace exact-duplicate blocks with markers
 │   └── skills_library.py            # Skill/SkillsLibrary + load_skills_dir() - parses coding_agent/skills/*.md
 ├── skills/                    # *.md reference files loaded on demand by load_skill (see skills_library.py)
 ├── benchmark/
@@ -265,14 +271,18 @@ to it:
   (`_format_routing_summary`) - because difficulty and gate results only
   exist when routing is active.
 - `--enable cache-friendly-prompts` / `loop-guard` / `context-window` /
+  `tool-filtering` / `prompt-compression` / `deduplication` /
   `observability`: an *extra* line each, printed alongside whichever line
   above (they can all be enabled together) - stable-prefix size and
   reuse % (`/cache`, `_format_cache_summary`), repeat streak/nudges/halts
   (`/loopguard`, `_format_loop_guard_summary`), outputs pruned/skills
-  loaded (`/context`, `_format_context_summary`), and call count/avg
-  latency/flagged errors (`/observability`, `_format_observability_summary`)
-  respectively - silent on a turn where that mode's mechanism didn't
-  actually do anything.
+  loaded (`/context`, `_format_context_summary`), tool definitions
+  withheld (`/toolfilter`, `_format_tool_filter_summary`), prompt sizes
+  before/after (`/compression`, `_format_compression_summary`),
+  duplicates replaced (`/dedup`, `_format_dedup_summary`), and call
+  count/avg latency/flagged errors (`/observability`,
+  `_format_observability_summary`) respectively - silent on a turn where
+  that mode's mechanism didn't actually do anything.
 
 If you build an optimization that introduces its own mode with its own
 extra signals (the way hybrid-routing has difficulty/gate data), give it
@@ -282,6 +292,35 @@ pad a generic line with fields that are meaningless in your mode.
 (`observability-otel`, below, deliberately has no per-turn line - its
 data doesn't live in this process, so there's nothing turn-specific to
 print; `/observability-otel` just says where to go look.)
+
+## Prompt optimization (the five-technique family)
+
+"Prompt optimization" in this project is a family of **five techniques**,
+each removing a different kind of waste from what gets sent, each live
+behind its own `--enable` flag:
+
+- **Context pruning** - remove irrelevant conversation history
+  (`context-window`: stale bulky tool output becomes a short placeholder).
+- **Conversation summarization** - replace older messages with a concise
+  summary (`conversation-summary`).
+- **Tool filtering** - expose only tools relevant to the current request
+  (`tool-filtering`: withholds the action tools from read-only requests;
+  never drops exploration tools, unknown tools, or a tool in use this turn).
+- **Prompt compression** - rewrite long instructions into shorter
+  equivalents without losing meaning (`prompt-compression`: swaps in the
+  hand-tightened `SYSTEM_PROMPT_COMPACT` + compact tool descriptions at
+  the send boundary; suffixes appended by other optimizations pass through).
+- **Deduplication** - avoid repeating identical instructions or context
+  (`deduplication`: later exact duplicates of a large block become a
+  marker pointing at the surviving first copy; nothing is ever removed).
+
+The first two own `history_policy` (so they can't combine with each
+other); the last three wrap the model call and compose with everything.
+Shared stance: every removal is deterministic and local (string matching,
+hashing, hand-tightened rewrites) - never a model call that spends tokens
+to save tokens, and never an estimated saving. The complementary lever -
+making the tokens that *must* repeat cheaper rather than fewer - is
+prompt caching, whose live groundwork is `cache-friendly-prompts`.
 
 ## Observability
 

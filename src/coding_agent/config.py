@@ -69,6 +69,7 @@ class Config:
     loop_guard_halt_after: int
     context_prune_keep_recent_messages: int
     context_prune_min_chars_to_prune: int
+    dedup_min_chars: int
     routing_ollama_base_url: str
     routing_quality_gate_enabled: bool
     otel_exporter_otlp_endpoint: str | None
@@ -133,6 +134,7 @@ class Config:
             context_prune_min_chars_to_prune=_require_int(
                 "AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE"
             ),
+            dedup_min_chars=_require_int("AGENT_DEDUP_MIN_CHARS"),
             routing_ollama_base_url=(
                 _optional_str("AGENT_ROUTING_OLLAMA_BASE_URL") or ollama_base_url
             ),
