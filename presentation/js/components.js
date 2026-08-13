@@ -61,15 +61,27 @@
         .map((t) => t.title)
         .join(" &middot; ");
     },
+    // Icons of the primary techniques a speaker owns - used for the
+    // presenter card's topic badge (no photos, just what they present).
+    speakerTechIcons(speakerId) {
+      return Object.values(window.TECHNIQUES)
+        .filter((t) => t.owner === speakerId && t.primary && t.icon)
+        .map((t) => t.icon);
+    },
     presenterCards() {
       const letters = ["a", "b", "c"];
-      return window.SPEAKERS.map((s, i) => `
+      return window.SPEAKERS.map((s, i) => {
+        const badge = TW.speakerTechIcons(s.id)
+          .map((n) => `<span class="ic">${TW.icon(n)}</span>`)
+          .join("");
+        return `
         <div class="presenter ${letters[i] || "a"}">
-          <div class="avatar"></div>
+          <div class="pbadge">${badge}</div>
           <div class="pname">${s.name}</div>
           <div class="prole">${s.role} &middot; ${s.org}</div>
           <div class="powns">${TW.speakerOwns(s.id)}</div>
-        </div>`).join("");
+        </div>`;
+      }).join("");
     },
 
     // ---- techniques -----------------------------------------------------

@@ -1,7 +1,7 @@
 /* ============================================ 30 · PROMPT OPTIMIZATION & CACHING
    Technique #2 - LIVE in the repo. Two levers: (a) prompt optimization - a
-   family of FIVE techniques, all live (context pruning, summarization, tool
-   filtering, prompt compression, deduplication); (b) prompt caching -
+   family of FOUR techniques, all live (context pruning, summarization, tool
+   filtering, prompt compression); (b) prompt caching -
    --enable cache-friendly-prompts builds the byte-stable prefix a cache
    needs (measured on the next slide); ProviderCacheAdapter is the wired seam
    a vendor-specific cache hint plugs into. The demo slide keeps its
@@ -20,7 +20,7 @@ Deck.add({
       ${TW.techMeta('prompt-caching')}
     </div>
   `,
-  notes: `Krishna Chaitanya. Two levers here: (1) prompt optimization - not one trick but a FAMILY OF FIVE techniques, all live in the repo: context pruning (context-window), conversation summarization (conversation-summary), tool filtering, prompt compression, deduplication; (2) prompt caching - providers bill a cached prefix at ~10%. What's live today on the caching side: the deterministic, byte-stable prefix construction (cache-friendly-prompts, next section) that any provider cache needs before it can reuse anything - plus the ProviderCacheAdapter seam a vendor-specific cache hint drops into.`,
+  notes: `Krishna Chaitanya. Two levers here: (1) prompt optimization - not one trick but a FAMILY OF FOUR techniques, all live in the repo: context pruning (context-window), conversation summarization (conversation-summary), tool filtering, prompt compression; (2) prompt caching - providers bill a cached prefix at ~10%. What's live today on the caching side: the deterministic, byte-stable prefix construction (cache-friendly-prompts, next section) that any provider cache needs before it can reuse anything - plus the ProviderCacheAdapter seam a vendor-specific cache hint drops into.`,
 });
 
 Deck.add({
@@ -28,7 +28,7 @@ Deck.add({
   html: `
     <div class="slide-head">
       <div class="kicker">02 &middot; Prompt optimization</div>
-      <h2>Not one trick &mdash; five techniques</h2>
+      <h2>Not one trick &mdash; four techniques</h2>
     </div>
     <div class="card-grid cols-3" style="margin-top:18px;font-size:0.92em;">
       <div class="tw-card sapphire">
@@ -47,17 +47,13 @@ Deck.add({
         <div class="cap">Prompt compression</div>
         <div class="body">Rewrite long instructions into shorter equivalents without losing meaning &mdash; hand-tightened, deterministic.<br><span style="font-family:var(--tw-mono);font-size:0.85em;">--enable prompt-compression</span></div>
       </div>
-      <div class="tw-card turmeric">
-        <div class="cap">Deduplication</div>
-        <div class="body">Never repeat identical instructions or content &mdash; later exact copies become a marker pointing at the first.<br><span style="font-family:var(--tw-mono);font-size:0.85em;">--enable deduplication</span></div>
-      </div>
       <div class="tw-card wave">
-        <div class="cap">All five compose</div>
+        <div class="cap">All four compose</div>
         <div class="body">Every removal is deterministic and local &mdash; never a model call that spends tokens to save tokens, never an estimate.</div>
       </div>
     </div>
   `,
-  notes: `Krishna Chaitanya. The five prompt-optimization techniques, all live. The two BLUE cards own history (summarization compresses, pruning selects) - they each get their own section, and only one of them can own history at a time. The three TURMERIC ones wrap the model call and compose with everything. Shared stance: every removal is deterministic and local - keyword match, exact-hash match, hand-tightened rewrite - never an LLM call to save tokens, never an estimated saving.`,
+  notes: `Krishna Chaitanya. The four prompt-optimization techniques, all live. The two BLUE cards own history (summarization compresses, pruning selects) - they each get their own section, and only one of them can own history at a time. The two TURMERIC ones wrap the model call and compose with everything. Shared stance: every removal is deterministic and local - keyword match, hand-tightened rewrite - never an LLM call to save tokens, never an estimated saving.`,
 });
 
 Deck.add({
@@ -118,7 +114,7 @@ Deck.add({
     <div class="card-grid cols-2" style="margin-top:20px;">
       <div class="tw-card turmeric">
         <div class="cap">Send fewer tokens</div>
-        <div class="body">The five techniques &mdash; pruning, summarization, tool filtering, compression, deduplication &mdash; each remove a different kind of waste. <b>Live</b>, each behind its own flag, all measured in the notebook.</div>
+        <div class="body">The four techniques &mdash; pruning, summarization, tool filtering, compression &mdash; each remove a different kind of waste. <b>Live</b>, each behind its own flag, all measured in the notebook.</div>
       </div>
       <div class="tw-card wave">
         <div class="cap">Cache the stable prefix</div>
@@ -129,7 +125,7 @@ Deck.add({
       Already live: <b>cache-friendly prompt construction</b> (next) builds the byte-stable prefix a cache can actually reuse &mdash; the part every provider's cache needs before it can do anything.
     </div>
   `,
-  notes: `Reassure the room this isn't special-cased: it's the same plug-in pattern every optimization uses. The three new techniques (tool filtering, compression, deduplication) all wrap the model call via a decorator; the two history ones plug in as a history policy. The deterministic construction caching depends on is implemented and measured - next section - the vendor-specific cache_control hint is a seam waiting for the first provider that needs it.`,
+  notes: `Reassure the room this isn't special-cased: it's the same plug-in pattern every optimization uses. The two new techniques (tool filtering, compression) both wrap the model call via a decorator; the two history ones plug in as a history policy. The deterministic construction caching depends on is implemented and measured - next section - the vendor-specific cache_control hint is a seam waiting for the first provider that needs it.`,
 });
 
 Deck.add({

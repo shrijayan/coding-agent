@@ -1693,3 +1693,59 @@ changes.
 [2026-08-14] Notebook: added key registration flow - title cell now points users to https://key-distribution.vercel.app/w/G04eDpFeZl3DfKBy5uHtYA to register their email and get an OpenRouter key. Setup cell now asks (in order): provider -> model -> paste API key (input prompt showing the register link). Colab secret is still read automatically first if present, else the paste prompt appears.
 
 [2026-08-14] Notebook: simplified setup - removed provider/model prompts entirely. Provider fixed to openrouter, model fixed to deepseek/deepseek-v4-flash-0731. Setup cell now asks for ONLY the OpenRouter API key (Colab secret read automatically first, else paste prompt with register link).
+
+---
+
+## Session: consolidated spikes notes into 2 topics
+
+User restructured the talk into TWO topics (was three): (1) Prompt Optimization &
+Caching, (2) Model Routing. Re-checked the repo — working-tree changes were
+cosmetic only (`presentation/js/hud.js` delta-persist tweak; `.gitignore` now
+ignores `spikes/` and `playground/`); slide `.js` content unchanged, so the
+earlier analysis of the implementation still holds.
+
+Replaced the three per-slide-range files with two:
+- `spikes/slides-12-18-prompt-optimization-and-caching.md` — merges the old
+  12–14 (caching idea) + 15–18 (cache-friendly construction) into one narrative:
+  problem → two levers (trim + cache) → the byte-identical-prefix prerequisite →
+  live impl (builder memoization, serializer determinism, provider_adapter seam,
+  /cache metrics) → hands-on. Notes it's part-live (cache-friendly) /
+  part-in-progress (provider cache directive).
+- `spikes/slides-19-22-model-routing.md` — routing notes, retitled "Model
+  Routing", content carried over (features/router/tiers/quality_gate/
+  hybrid_routing/metrics, the vocab-independent-signals bug fix, data-driven
+  ladder). Deleted the old `slides-12-14.md`, `slides-15-18.md`, `slides-19-22.md`.
+
+Note: `spikes/` is now gitignored, so these notes live locally and won't be
+committed.
+
+---
+
+## Session: added the prompt-optimization FAMILY to the spikes notes
+
+User flagged the spikes MD didn't cover deduplication / the other prompt-
+optimization techniques now in the deck. Re-analysed:
+- `presentation/slides/30-prompt-caching.js` was expanded (3 -> 5 slides) into a
+  "prompt optimization is a FAMILY" section, and the working tree had just edited
+  it from FIVE cards to FOUR (deduplication card removed; context pruning,
+  conversation summarization, tool filtering, prompt compression remain).
+- The code, however, has ALL of them live in `optimizations/available.py`:
+  context-window, conversation-summary, tool-filtering, prompt-compression,
+  deduplication (+ loop-guard, observability, observability-otel).
+- Deck slide numbers shifted: Prompt Optimization & Caching = slides 12-20,
+  Model Routing = slides 21-24.
+
+Actions:
+- Replaced `slides-12-18-*.md` with `slides-12-20-prompt-optimization-and-caching.md`,
+  adding a full PART A "family" section: one subsection per technique (waste
+  removed / how it works / safety / code file / flag / /command), the
+  history-owner vs wrap-the-call (blue vs turmeric) grouping, and the
+  ConflictingOptimizationsError one-history-owner rule. Kept PART B caching.
+  Read each impl to keep it accurate: context_window.py (ContextPruningPolicy +
+  skills), conversation_summary.py (running cached summary, counted in /usage),
+  tool_filtering.py (action-tools-only, keep-on-uncertainty), prompt_compression.py
+  (hand-tightened, not a runtime model), deduplication.py (exact-match marker).
+- Noted deck currently shows four cards (dedup pulled) but kept dedup notes so the
+  presenter can speak to it / re-add it; it's `--enable deduplication`.
+- Renamed routing file to `slides-21-24-model-routing.md` and fixed its internal
+  slide-number refs (ladder 20->22, callout 21->23, notebook 22->24).

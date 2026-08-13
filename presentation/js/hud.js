@@ -80,8 +80,8 @@
       el.textContent = arrow + " " + mag;
       el.classList.remove("good", "bad");
       el.classList.add(good ? "good" : "bad", "show");
+      // persist the delta so the audience can keep tracking the +/- change
       clearTimeout(el._t);
-      el._t = setTimeout(() => el.classList.remove("show"), 2600);
     },
 
     _tweenField(field, to, dur, apply) {

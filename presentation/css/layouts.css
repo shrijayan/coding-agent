@@ -142,19 +142,17 @@
 /* ============================================================= presenter card */
 .presenters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: 14px; }
 .presenter { display: flex; flex-direction: column; align-items: flex-start; }
-.presenter .avatar {
-  width: 118px; height: 118px; border-radius: 50%; margin-bottom: 14px;
-  background: var(--tw-card); position: relative; overflow: hidden;
-  border: 3px solid #fff; box-shadow: 0 0 0 1px var(--tw-hair);
-}
-.presenter .avatar::after {
-  content: ""; position: absolute; inset: 0;
+.presenter .pbadge {
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  min-width: 118px; height: 72px; padding: 0 22px; border-radius: 18px;
+  margin-bottom: 14px; color: #fff; font-size: 30px;
   background: linear-gradient(135deg, var(--grad-a, #47A1AD), var(--grad-b, #003D4F));
-  opacity: 0.9;
+  border: 3px solid #fff; box-shadow: 0 6px 18px rgba(0, 61, 79, 0.18);
 }
-.presenter.a .avatar::after { --grad-a: var(--tw-flamingo); --grad-b: var(--tw-amethyst); }
-.presenter.b .avatar::after { --grad-a: var(--tw-sapphire); --grad-b: var(--tw-wave); }
-.presenter.c .avatar::after { --grad-a: var(--tw-turmeric); --grad-b: var(--tw-jade); }
+.presenter .pbadge .ic { display: inline-flex; }
+.presenter.a .pbadge { --grad-a: var(--tw-flamingo); --grad-b: var(--tw-amethyst); }
+.presenter.b .pbadge { --grad-a: var(--tw-sapphire); --grad-b: var(--tw-wave); }
+.presenter.c .pbadge { --grad-a: var(--tw-turmeric); --grad-b: var(--tw-jade); }
 .presenter .pname { font-family: var(--tw-serif); font-weight: 800; font-size: 1.05em; }
 .presenter .prole { font-size: 0.76em; color: var(--tw-muted); margin-top: 2px; }
 .presenter .powns { font-size: 0.72em; color: var(--tw-flamingo); font-weight: 700; margin-top: 8px; }
