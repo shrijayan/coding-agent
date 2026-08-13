@@ -38,14 +38,15 @@ def run_benchmark(
     optimizations_label = ", ".join(enabled_names) or "none"
     print(
         f"Running benchmark ({len(TASKS)} tasks, {config.provider} / {config.model}, "
-        f"optimizations: {optimizations_label})...\n"
+        f"optimizations: {optimizations_label})...\n",
+        flush=True,
     )
 
     results: list[TaskResult] = []
     with tempfile.TemporaryDirectory(prefix="coding-agent-benchmark-") as tmp:
         root = Path(tmp)
         for task in TASKS:
-            print(f"[{task.instance_id}] setting up sandbox and running agent...")
+            print(f"[{task.instance_id}] setting up sandbox and running agent...", flush=True)
             # Resolve a *fresh* bundle per task, not one shared across all
             # of them: a stateful optimization (e.g. conversation
             # summarization, which caches a running summary) must not
@@ -62,9 +63,9 @@ def run_benchmark(
             results.append(result)
 
             status = "RESOLVED" if result.resolved else "NOT RESOLVED"
-            print(f"[{task.instance_id}] {status} in {result.duration_seconds:.1f}s")
+            print(f"[{task.instance_id}] {status} in {result.duration_seconds:.1f}s", flush=True)
             if result.error:
-                print(f"  error: {result.error}")
+                print(f"  error: {result.error}", flush=True)
             print()
 
     _print_summary(results, pricing, config.model)
@@ -72,7 +73,7 @@ def run_benchmark(
 
 def _make_tool_observer(instance_id: str) -> ToolCallObserver:
     def observer(name: str, tool_input: dict) -> None:
-        print(f"  [{instance_id}] tool: {name}({tool_input})")
+        print(f"  [{instance_id}] tool: {name}({tool_input})", flush=True)
 
     return observer
 
