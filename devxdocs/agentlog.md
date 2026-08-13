@@ -1752,3 +1752,5 @@ Actions:
 [2026-08-14] Notebook: "Meet the base agent" smoke test simplified - no hardcoded model override, uses default deepseek model; demo prompt shortened to just "hi".
 
 [2026-08-14] Notebook: updated key registration link to the real prod URL (key-distribution.vercel.app/w/wAwE5_U3QvomPo1YIgSHJg) in the title cell and the setup cell KEY_URL.
+
+[2026-08-14] Notebook: "Meet the base agent" demo prompt restored to "Create hello.py that prints Hello workshop, then show me its contents." (was briefly shortened to "hi").
