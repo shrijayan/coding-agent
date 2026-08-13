@@ -1687,3 +1687,5 @@ changes.
 [2026-08-14] Notebook: rewrote all 33 markdown cells to concise bullet instructions - removed prose/explanation, kept all tables (model presets, five techniques, request anatomy, cache layers, routing tiers) and terminal commands. ~25K -> ~11.6K markdown chars.
 
 [2026-08-14] Notebook: collapsed all 31 code cells (metadata "collapsed": true) so the notebook opens collapsed from GitHub. Replaced Step 3 EDIT-ME constants and the free-play cell with input() terminal prompts (provider, model, task, optimizations). API key still read only from Colab Secrets - never prompted. nbformat-validated.
+
+[2026-08-14] Notebook: merged ALL setup cells (title intro, clone, install, config, sanity check, measurement harness, run_scenario) into ONE collapsed code cell + one minimal title markdown. First visible section is now "Meet the base agent". Setup flow: run the single setup cell -> it prompts for provider/model, reads Colab secret, installs, pings. 53 cells total, all code collapsed.
