@@ -9,18 +9,15 @@ Deck.add({
   id: "sum-sep",
   dark: true,
   html: `
-    <div class="separator" style="--sep-accent:var(--tw-sapphire);">
+    <div class="separator" style="--sep-accent:${TW.techAccent('summarization')};">
       <div class="bar"></div>
-      <div class="idx">Technique 01</div>
-      <h1>Conversation summarization</h1>
+      <div class="idx">${TW.techIdx('summarization')}</div>
+      <h1>${TW.techTitle('summarization')}</h1>
       <p>Every turn re-sends the whole transcript &mdash; and it only grows. So stop re-sending all of it.</p>
-      <div class="sep-meta">
-        <span class="pill live"><span class="dot"></span>live in the repo</span>
-        <div class="flag">--enable conversation-summary</div>
-      </div>
+      ${TW.techMeta('summarization')}
     </div>
   `,
-  notes: `Presenter One. The problem in one line: every turn re-sends the whole transcript, and the transcript only grows. Summarization caps that.`,
+  notes: `Shrijayan. The problem in one line: every turn re-sends the whole transcript, and the transcript only grows. Summarization caps that.`,
 });
 
 Deck.add({
@@ -111,7 +108,7 @@ Deck.add({
     </div>
     <div class="callout" style="margin-top:22px;">The agent's own memory of the conversation is <b>never touched</b> &mdash; only what gets <em>sent</em> per call shrinks.</div>
   `,
-  notes: `Presenter One. Three subtle things that make this correct, not just a demo: (1) fold only what's new so the summarizer cost is bounded; (2) tool_use/tool_result must stay together; (3) the summarize call's tokens are recorded, so cost is honest. All concept - the implementation is one small class in the repo if they want to read it.`,
+  notes: `Shrijayan. Three subtle things that make this correct, not just a demo: (1) fold only what's new so the summarizer cost is bounded; (2) tool_use/tool_result must stay together; (3) the summarize call's tokens are recorded, so cost is honest. All concept - the implementation is one small class in the repo if they want to read it.`,
 });
 
 Deck.add({
@@ -127,7 +124,7 @@ Deck.add({
           <div class="t">Notebook &rarr; &ldquo;Optimization 1 &mdash; Conversation summarization&rdquo;</div>
           <div class="s">Push history past the threshold, then compare to your baseline run.</div>
         </div>
-        <div class="nb-cmd">--enable conversation-summary</div>
+        <div class="nb-cmd">${TW.techFlag('summarization')}</div>
       </div>
       <p class="muted" style="font-size:0.82em;margin-top:18px;">Expect: fewer tokens per turn, a small one-off summarize cost, and savings that grow with conversation length.</p>
     </div>

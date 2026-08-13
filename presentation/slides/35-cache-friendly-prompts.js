@@ -8,18 +8,15 @@ Deck.add({
   id: "cf-sep",
   dark: true,
   html: `
-    <div class="separator" style="--sep-accent:var(--tw-sapphire);">
+    <div class="separator" style="--sep-accent:${TW.techAccent('cache-friendly')};">
       <div class="bar"></div>
-      <div class="idx">Technique 02b</div>
-      <h1>Cache-friendly prompts</h1>
+      <div class="idx">${TW.techIdx('cache-friendly')}</div>
+      <h1>${TW.techTitle('cache-friendly')}</h1>
       <p>A cache can only reuse a prefix that is <b>byte-identical</b> every turn. So build the prompt deterministically &mdash; stable parts first, churn last.</p>
-      <div class="sep-meta">
-        <span class="pill live"><span class="dot"></span>live in the repo</span>
-        <div class="flag">--enable cache-friendly-prompts</div>
-      </div>
+      ${TW.techMeta('cache-friendly')}
     </div>
   `,
-  notes: `Presenter One. Prompt caching (previous section) is provider-side: THEY bill a repeated prefix at a fraction. But that only fires if the bytes match exactly. This technique is our side of that deal: construct the prompt so the stable prefix never wobbles - deterministic ordering, canonical JSON, normalized whitespace. Provider-agnostic.`,
+  notes: `Krishna Chaitanya. Prompt caching (previous section) is provider-side: THEY bill a repeated prefix at a fraction. But that only fires if the bytes match exactly. This technique is our side of that deal: construct the prompt so the stable prefix never wobbles - deterministic ordering, canonical JSON, normalized whitespace. Provider-agnostic.`,
 });
 
 Deck.add({
@@ -100,7 +97,7 @@ Deck.add({
       Works with <b>any provider</b> &mdash; the construction is ours; provider-specific caching plugs in at the edge without touching the core.
     </div>
   `,
-  notes: `Presenter One. Same plug-in pattern as everything else - it wraps the model call, zero loop changes. The pieces: a builder (assembly + stable-before-dynamic invariant), a serializer (deterministic bytes + hash), and a provider seam so vendor caching plugs in later. Instrumentation is honest: input tokens are the provider's real number; reuse % is a byte fact.`,
+  notes: `Krishna Chaitanya. Same plug-in pattern as everything else - it wraps the model call, zero loop changes. The pieces: a builder (assembly + stable-before-dynamic invariant), a serializer (deterministic bytes + hash), and a provider seam so vendor caching plugs in later. Instrumentation is honest: input tokens are the provider's real number; reuse % is a byte fact.`,
 });
 
 Deck.add({
@@ -116,7 +113,7 @@ Deck.add({
           <div class="t">Notebook &rarr; &ldquo;Optimization 2b &mdash; Cache-friendly prompts&rdquo;</div>
           <div class="s">Run the shared task set, then check the cache report for prefix reuse.</div>
         </div>
-        <div class="nb-cmd">--enable cache-friendly-prompts</div>
+        <div class="nb-cmd">${TW.techFlag('cache-friendly')}</div>
       </div>
       <p class="muted" style="font-size:0.82em;margin-top:18px;">One stable fingerprint across every call is the win &mdash; it means a cache has something byte-stable to reuse.</p>
     </div>

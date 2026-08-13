@@ -32,8 +32,68 @@
     stack:     '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
   };
 
+  // Short pill copy per status, for the two contexts that use it: the
+  // separator's own pill ("live in the repo") and the compact recap-table /
+  // agenda-list pill ("live"). Pass a label to override either.
+  const PILL_LABEL = { live: "live in the repo", wip: "in progress", planned: "planned" };
+  const PILL_LABEL_SHORT = { live: "live", wip: "building", planned: "planned" };
+
+  function tech(id) {
+    const t = window.TECHNIQUES && window.TECHNIQUES[id];
+    if (!t) throw new Error(`TW: unknown technique id "${id}"`);
+    return t;
+  }
+
   window.TW = {
     icon(name) { return svg(ICONS[name] || ICONS.check); },
     escape(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); },
+
+    // ---- speakers -----------------------------------------------------
+    speakerByline(sep) {
+      return window.SPEAKERS.map((s) => s.name).join(sep || " &middot; ");
+    },
+    // Full titles of the primary techniques a speaker owns, joined for a
+    // presenter card / thank-you slide - derived from TECHNIQUES so it can
+    // never drift from what the agenda/recap actually list.
+    speakerOwns(speakerId) {
+      return Object.values(window.TECHNIQUES)
+        .filter((t) => t.owner === speakerId && t.primary)
+        .map((t) => t.title)
+        .join(" &middot; ");
+    },
+    presenterCards() {
+      const letters = ["a", "b", "c"];
+      return window.SPEAKERS.map((s, i) => `
+        <div class="presenter ${letters[i] || "a"}">
+          <div class="avatar"></div>
+          <div class="pname">${s.name}</div>
+          <div class="prole">${s.role} &middot; ${s.org}</div>
+          <div class="powns">${TW.speakerOwns(s.id)}</div>
+        </div>`).join("");
+    },
+
+    // ---- techniques -----------------------------------------------------
+    pill(status, label) {
+      return `<span class="pill ${status}"><span class="dot"></span>${label || PILL_LABEL[status] || status}</span>`;
+    },
+    techAccent(id) { return `var(--tw-${tech(id).accent})`; },
+    techIdx(id) { return `Technique ${tech(id).number}`; },
+    techTitle(id) { return tech(id).title; },
+    techFlag(id) { return tech(id).flag; },
+    // The pill + --enable flag block every separator slide shows.
+    techMeta(id) {
+      const t = tech(id);
+      return `<div class="sep-meta">${TW.pill(t.status)}<div class="flag">${t.flag}</div></div>`;
+    },
+    // One row of the agenda's "Five techniques" list (00-intro.js).
+    agendaRow(id) {
+      const t = tech(id);
+      return `<div>${TW.pill(t.status, PILL_LABEL_SHORT[t.status])} &nbsp;${t.title}</div>`;
+    },
+    // One row of the closing recap table (90-closing.js).
+    recapRow(id) {
+      const t = tech(id);
+      return `<tr><td><b>${t.title}</b></td><td>${TW.pill(t.status, PILL_LABEL_SHORT[t.status])}</td><td>${t.meterNote}</td></tr>`;
+    },
   };
 })();

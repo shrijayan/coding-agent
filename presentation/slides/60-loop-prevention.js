@@ -1,5 +1,5 @@
 /* ================================================= 60 · AGENT LOOP PREVENTION
-   Technique #5 - IN PROGRESS. Agents get stuck: same failing tool call on
+   Technique #5 - LIVE in the repo. Agents get stuck: same failing tool call on
    repeat, burning tokens and money. Detect the loop and break it. The
    concept demo keeps fragments + HUD; the plan slide is static.
 ============================================================================ */
@@ -8,18 +8,15 @@ Deck.add({
   id: "lp-sep",
   dark: true,
   html: `
-    <div class="separator" style="--sep-accent:var(--tw-flamingo);">
+    <div class="separator" style="--sep-accent:${TW.techAccent('loop-prevention')};">
       <div class="bar"></div>
-      <div class="idx">Technique 05</div>
-      <h1>Agent loop prevention</h1>
+      <div class="idx">${TW.techIdx('loop-prevention')}</div>
+      <h1>${TW.techTitle('loop-prevention')}</h1>
       <p>A stuck agent is the most expensive agent: it repeats the same failing move and bills you for every lap.</p>
-      <div class="sep-meta">
-        <span class="pill wip"><span class="dot"></span>in progress</span>
-        <div class="flag">detect &middot; break &middot; recover</div>
-      </div>
+      ${TW.techMeta('loop-prevention')}
     </div>
   `,
-  notes: `Presenter Three. Not a token-per-turn saving - a catastrophe cap. When an agent loops, cost climbs with zero progress. This detects it and stops the bleed.`,
+  notes: `Adithya. Not a token-per-turn saving - a catastrophe cap. When an agent loops, cost climbs with zero progress. This detects it and stops the bleed.`,
 });
 
 Deck.add({
@@ -57,22 +54,43 @@ Deck.add({
       </div>
     </div>
   `,
-  notes: `Design slide. Step it: the same failing edit repeats, cost climbs, tokens climb - then the guard trips, freezes the spend and clears the dead loop. Today the repo has AGENT_MAX_ITERATIONS and the CostGuard soft cap as blunt backstops; the new piece is detecting the loop by repetition/no-progress and recovering, not just hitting a ceiling.`,
+  notes: `Step it: the same failing edit repeats, cost climbs, tokens climb - then the guard trips, freezes the spend and clears the dead loop. The repo also has AGENT_MAX_ITERATIONS and the CostGuard soft cap as blunt backstops; loop-guard is the layer above them that detects the loop by repetition/no-progress and recovers, instead of just hitting a ceiling. In the notebook, a cooperative prompt set correctly triggers zero nudges and zero halts - only a prompt built to loop (an intentionally broken shell command) trips the guard for real.`,
 });
 
 Deck.add({
   id: "lp-plan",
   html: `
     <div class="slide-head">
-      <div class="kicker">05 &middot; What exists, what's new</div>
+      <div class="kicker">05 &middot; How it layers with the existing caps</div>
       <h2>From blunt caps to real detection</h2>
     </div>
     <div class="card-grid cols-3" style="margin-top:20px;">
-      <div class="tw-card wave"><div class="cap">Today: iteration cap</div><div class="body">A hard lap ceiling in the loop. Safe, but dumb &mdash; it can't tell progress from spinning.</div></div>
-      <div class="tw-card turmeric"><div class="cap">Today: cost guard</div><div class="body">A soft per-session spend cap. Stops before the shared budget burns.</div></div>
-      <div class="tw-card flamingo"><div class="cap">New: loop detector</div><div class="body">Spots repeated calls with no progress, breaks the loop, and re-plans. <b>Building now.</b></div></div>
+      <div class="tw-card wave"><div class="cap">Iteration cap</div><div class="body">A hard lap ceiling in the loop. Safe, but dumb &mdash; it can't tell progress from spinning.</div></div>
+      <div class="tw-card turmeric"><div class="cap">Cost guard</div><div class="body">A soft per-session spend cap. Stops before the shared budget burns.</div></div>
+      <div class="tw-card flamingo"><div class="cap">Loop detector</div><div class="body">Spots the same failing call repeating, nudges once, then halts cleanly with zero further API calls. <b>Live.</b></div></div>
     </div>
-    <div class="callout" style="margin-top:20px;">The caps are the safety net. The detector is the fix &mdash; catch the loop early, before either cap is even reached.</div>
+    <div class="callout" style="margin-top:20px;">The caps are the safety net. The detector is the fix &mdash; it catches the loop early, well before either cap is reached.</div>
   `,
-  notes: `Presenter Three. Frame it as maturity: caps already protect the budget (max iterations + cost guard). The optimization is detecting the loop by behaviour and intervening, so you rarely hit the caps at all.`,
+  notes: `Adithya. Frame it as maturity: caps already protect the budget (max iterations + cost guard). loop-guard detects the loop by behaviour and intervenes, so you rarely hit the caps at all.`,
+});
+
+Deck.add({
+  id: "lp-notebook",
+  html: `
+    <div class="center-v">
+      <div class="kicker">Your turn &mdash; hands on</div>
+      <h2>Measure it: cooperative vs. stuck</h2>
+      <p class="lead" style="max-width:44ch;">Run a normal task first, then a prompt built to loop &mdash; and watch the guard trip only when it's real.</p>
+      <div class="notebook-cue">
+        <div class="nb-ic">Jy</div>
+        <div class="nb-tx">
+          <div class="t">Notebook &rarr; &ldquo;Optimization 4 &mdash; Agent loop prevention&rdquo;</div>
+          <div class="s">Run <code>opt_loop_guard["session"].loop_guard_report()</code>, then the stress-prompt cell to force a real halt.</div>
+        </div>
+        <div class="nb-cmd">${TW.techFlag('loop-prevention')}</div>
+      </div>
+      <p class="muted" style="font-size:0.82em;margin-top:18px;">Expect: zero nudges/halts on the cooperative demo prompts, and a real nudge-then-halt on the stress prompt &mdash; with a true-zero cost for the halted call.</p>
+    </div>
+  `,
+  notes: `Everyone runs it. The honesty point: we don't fake a loop on the main demo set to make the chart look good - zero is the correct result there. The stress-prompt cell is a deliberately broken shell command that shows the guard actually tripping.`,
 });

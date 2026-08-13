@@ -9,18 +9,15 @@ Deck.add({
   id: "route-sep",
   dark: true,
   html: `
-    <div class="separator" style="--sep-accent:var(--tw-jade);">
+    <div class="separator" style="--sep-accent:${TW.techAccent('routing')};">
       <div class="bar"></div>
-      <div class="idx">Technique 03</div>
-      <h1>Model selection &amp; routing</h1>
+      <div class="idx">${TW.techIdx('routing')}</div>
+      <h1>${TW.techTitle('routing')}</h1>
       <p>Don't send every request to your best (most expensive) model. Match the model to the difficulty of the ask.</p>
-      <div class="sep-meta">
-        <span class="pill live"><span class="dot"></span>live in the repo</span>
-        <div class="flag">--enable hybrid-routing</div>
-      </div>
+      ${TW.techMeta('routing')}
     </div>
   `,
-  notes: `Presenter Two. The base agent sends everything to one model. Routing sends easy work to a cheap model and reserves the strong one for genuinely hard requests.`,
+  notes: `Krishna Chaitanya. The base agent sends everything to one model. Routing sends easy work to a cheap model and reserves the strong one for genuinely hard requests.`,
 });
 
 Deck.add({
@@ -117,7 +114,7 @@ Deck.add({
       Routing decides on <b>every model call</b> &mdash; many times per turn, not once per question.
     </div>
   `,
-  notes: `Presenter Two. Hybrid beats either alone: pure pre-routing wastes the strong model on requests that only LOOKED hard; pure cascading always pays for a cheap attempt first even on obviously-hard ones. Scoring then gating spends the expensive model only when actually needed. The ladder is pure data in models.yaml.`,
+  notes: `Krishna Chaitanya. Hybrid beats either alone: pure pre-routing wastes the strong model on requests that only LOOKED hard; pure cascading always pays for a cheap attempt first even on obviously-hard ones. Scoring then gating spends the expensive model only when actually needed. The ladder is pure data in models.yaml.`,
 });
 
 Deck.add({
@@ -133,7 +130,7 @@ Deck.add({
           <div class="t">Notebook &rarr; &ldquo;Optimization 3 &mdash; Model routing&rdquo;</div>
           <div class="s">Run the mixed task set, then check the per-tier breakdown and total cost.</div>
         </div>
-        <div class="nb-cmd">--enable hybrid-routing</div>
+        <div class="nb-cmd">${TW.techFlag('routing')}</div>
       </div>
       <p class="muted" style="font-size:0.82em;margin-top:18px;">Compare total cost against the same workload on the strong tier alone &mdash; that gap is the routing win.</p>
     </div>

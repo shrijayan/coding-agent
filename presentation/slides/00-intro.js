@@ -17,7 +17,7 @@ Deck.add({
         <div class="eyebrow">XConf 2026 &middot; Hands-on workshop</div>
         <h1>Optimizing LLM&#8209;Powered Applications</h1>
         <div class="byline">
-          Presenter One &middot; Presenter Two &middot; Presenter Three
+          ${TW.speakerByline()}
           <span class="role"> &nbsp;|&nbsp; Thoughtworks</span>
         </div>
         <div style="position:absolute;right:8px;bottom:10px;"><img src="assets/xconf-logo.svg" alt="XConf" style="height:56px;" /></div>
@@ -35,24 +35,7 @@ Deck.add({
       <h2>Hi &mdash; we're your facilitators</h2>
       <p class="lead muted" style="max-width:40ch;">Three of us, one live coding agent, and a set of optimizations we'll switch on in front of you.</p>
       <div class="presenters">
-        <div class="presenter a">
-          <div class="avatar"></div>
-          <div class="pname">Presenter One</div>
-          <div class="prole">Role / Title &middot; Thoughtworks</div>
-          <div class="powns">Summarization &middot; Prompt caching</div>
-        </div>
-        <div class="presenter b">
-          <div class="avatar"></div>
-          <div class="pname">Presenter Two</div>
-          <div class="prole">Role / Title &middot; Thoughtworks</div>
-          <div class="powns">Model selection &amp; routing</div>
-        </div>
-        <div class="presenter c">
-          <div class="avatar"></div>
-          <div class="pname">Presenter Three</div>
-          <div class="prole">Role / Title &middot; Thoughtworks</div>
-          <div class="powns">Context window &middot; Loop prevention</div>
-        </div>
+        ${TW.presenterCards()}
       </div>
     </div>
   `,
@@ -79,15 +62,15 @@ Deck.add({
         <div class="visual-panel">
           <div class="kicker" style="margin-bottom:14px;">Five techniques</div>
           <div class="stack-sm" style="font-family:var(--tw-sans);font-size:0.92em;">
-            <div><span class="pill live"><span class="dot"></span>live</span> &nbsp;Conversation summarization</div>
-            <div><span class="pill wip"><span class="dot"></span>building</span> &nbsp;Prompt optimization &amp; caching</div>
-            <div><span class="pill live"><span class="dot"></span>live</span> &nbsp;Model selection &amp; routing</div>
-            <div><span class="pill wip"><span class="dot"></span>building</span> &nbsp;Context window optimization</div>
-            <div><span class="pill wip"><span class="dot"></span>building</span> &nbsp;Agent loop prevention</div>
+            ${TW.agendaRow('summarization')}
+            ${TW.agendaRow('prompt-caching')}
+            ${TW.agendaRow('routing')}
+            ${TW.agendaRow('context-window')}
+            ${TW.agendaRow('loop-prevention')}
           </div>
         </div>
       </div>
     </div>
   `,
-  notes: `Set expectations: idea (animation) -> notebook (you run it) -> measure. Two techniques are already wired into the repo (--enable flags); three are in active development - we'll show the design and where they plug in.`,
+  notes: `Set expectations: idea (animation) -> notebook (you run it) -> measure. All five techniques are live and wired into the repo - each one runs end-to-end in the notebook you have open.`,
 });

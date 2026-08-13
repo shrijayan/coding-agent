@@ -15,16 +15,16 @@ Deck.add({
         <tr><th>Technique</th><th>Status</th><th>What the meter does</th></tr>
       </thead>
       <tbody>
-        <tr><td><b>Conversation summarization</b></td><td><span class="pill live"><span class="dot"></span>live</span></td><td>tokens &darr;&darr; per turn, one-off summarize cost</td></tr>
-        <tr><td><b>Prompt optimization &amp; caching</b></td><td><span class="pill wip"><span class="dot"></span>building</span></td><td>cost growth flattens on repeated prefixes</td></tr>
-        <tr><td><b>Model selection &amp; routing</b></td><td><span class="pill live"><span class="dot"></span>live</span></td><td>cost &darr; &mdash; cheap model does the easy work</td></tr>
-        <tr><td><b>Context window optimization</b></td><td><span class="pill wip"><span class="dot"></span>building</span></td><td>tokens &darr; by pruning irrelevant context</td></tr>
-        <tr><td><b>Agent loop prevention</b></td><td><span class="pill wip"><span class="dot"></span>building</span></td><td>caps runaway cost when the agent spins</td></tr>
+        ${TW.recapRow('summarization')}
+        ${TW.recapRow('prompt-caching')}
+        ${TW.recapRow('routing')}
+        ${TW.recapRow('context-window')}
+        ${TW.recapRow('loop-prevention')}
       </tbody>
     </table>
     <p class="muted" style="font-size:0.82em;margin-top:16px;">Every row is proven the same way: run the task, read the meter, compare before vs after. <b>No estimates.</b></p>
   `,
-  notes: `Recap. Note two are live, three are in active development - and all five plug into the SAME extension point. The through-line of the whole session: prove it with real numbers, never claim it.`,
+  notes: `Recap. All five are live and wired into the repo, and all five plug into the SAME extension point. The through-line of the whole session: prove it with real numbers, never claim it.`,
 });
 
 Deck.add({
@@ -57,7 +57,7 @@ Deck.add({
       <p class="lead" style="color:#9fb6bd;max-width:46ch;margin-top:0.4em;">Take the base agent, layer on an optimization, and let the meter settle the argument.</p>
       <div style="margin-top:30px;display:flex;gap:44px;flex-wrap:wrap;align-items:flex-end;">
         <div>
-          <div style="color:var(--tw-flamingo);font-weight:700;">Presenter One &middot; Presenter Two &middot; Presenter Three</div>
+          <div style="color:var(--tw-flamingo);font-weight:700;">${TW.speakerByline()}</div>
           <div style="color:#9fb6bd;font-size:0.82em;">Thoughtworks</div>
         </div>
         <div style="font-family:var(--tw-mono);font-size:0.8em;color:#cfe3e7;">
