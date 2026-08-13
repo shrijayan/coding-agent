@@ -1685,3 +1685,5 @@ changes.
 [2026-08-14] Commit 976c6c4 (pushed): notebook Colab-secrets change + restored report.py flush=True prints (they had been wiped by a second fast-forward pull; restored from backup and committed). Also had to stash/rebase around dfcdcd5 which rewrote 559 lines of the same notebook - resolved by resetting notebook to upstream then re-applying the Step 3 change.
 
 [2026-08-14] Notebook: rewrote all 33 markdown cells to concise bullet instructions - removed prose/explanation, kept all tables (model presets, five techniques, request anatomy, cache layers, routing tiers) and terminal commands. ~25K -> ~11.6K markdown chars.
+
+[2026-08-14] Notebook: collapsed all 31 code cells (metadata "collapsed": true) so the notebook opens collapsed from GitHub. Replaced Step 3 EDIT-ME constants and the free-play cell with input() terminal prompts (provider, model, task, optimizations). API key still read only from Colab Secrets - never prompted. nbformat-validated.
