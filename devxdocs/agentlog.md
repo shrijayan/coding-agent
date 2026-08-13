@@ -1749,3 +1749,4 @@ Actions:
   presenter can speak to it / re-add it; it's `--enable deduplication`.
 - Renamed routing file to `slides-21-24-model-routing.md` and fixed its internal
   slide-number refs (ladder 20->22, callout 21->23, notebook 22->24).
+[2026-08-14] Notebook: "Meet the base agent" smoke test simplified - no hardcoded model override, uses default deepseek model; demo prompt shortened to just "hi".
