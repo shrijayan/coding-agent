@@ -37,6 +37,12 @@ class UsageTracker:
     """
 
     total: Usage = field(default_factory=Usage)
+    last: Usage | None = None
+    """The most recent call's usage, or None before the first call.
+
+    Exists for policies that decide based on how big the previous send
+    actually was (conversation-summary's token-based trigger) - always a
+    provider-reported count, never an estimate."""
     user_messages: int = 0
     llm_calls: int = 0
     tool_calls: int = 0
@@ -52,6 +58,7 @@ class UsageTracker:
 
     def record_llm_call(self, usage: Usage, model: str) -> None:
         self.llm_calls += 1
+        self.last = usage
         self.total = self.total + usage
         self.by_model[model] = self.by_model.get(model, Usage()) + usage
         self.calls_by_model[model] = self.calls_by_model.get(model, 0) + 1

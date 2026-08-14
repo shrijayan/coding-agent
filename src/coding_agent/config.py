@@ -63,7 +63,7 @@ class Config:
     max_tokens: int
     max_iterations: int
     bash_timeout_seconds: int
-    summary_threshold_messages: int
+    summary_token_threshold: int
     summary_keep_recent_messages: int
     loop_guard_nudge_after: int
     loop_guard_halt_after: int
@@ -129,7 +129,7 @@ class Config:
             max_tokens=_optional_int("AGENT_MAX_TOKENS", defaults.max_tokens),
             max_iterations=_require_int("AGENT_MAX_ITERATIONS"),
             bash_timeout_seconds=_require_int("AGENT_BASH_TIMEOUT_SECONDS"),
-            summary_threshold_messages=_require_int("AGENT_SUMMARY_THRESHOLD_MESSAGES"),
+            summary_token_threshold=_require_int("AGENT_SUMMARY_TOKEN_THRESHOLD"),
             summary_keep_recent_messages=_require_int("AGENT_SUMMARY_KEEP_RECENT_MESSAGES"),
             loop_guard_nudge_after=_require_int("AGENT_LOOP_GUARD_NUDGE_AFTER"),
             loop_guard_halt_after=_require_int("AGENT_LOOP_GUARD_HALT_AFTER"),

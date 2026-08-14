@@ -173,7 +173,7 @@ def _set_base_config_env(monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setenv("AGENT_MAX_ITERATIONS", "25")
     monkeypatch.setenv("AGENT_BASH_TIMEOUT_SECONDS", "60")
-    monkeypatch.setenv("AGENT_SUMMARY_THRESHOLD_MESSAGES", "10")
+    monkeypatch.setenv("AGENT_SUMMARY_TOKEN_THRESHOLD", "8000")
     monkeypatch.setenv("AGENT_SUMMARY_KEEP_RECENT_MESSAGES", "4")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES", "6")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE", "400")
