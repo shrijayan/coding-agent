@@ -57,75 +57,46 @@ Deck.add({
 });
 
 Deck.add({
-  id: "pc-concept",
-  hud: true,
-  tokens: 6150,
-  cost: 0.0360,
+  id: "pc-optmap",
   html: `
     <div class="slide-head">
-      <div class="kicker">02 &middot; Prompt caching</div>
-      <h2>Same prefix, every single call</h2>
+      <div class="kicker">02 &middot; Prompt optimization</div>
+      <h2>Which technique trims which layer</h2>
     </div>
-    <div class="split" style="grid-template-columns:1fr 1fr;">
-      <div class="col">
-        <div class="stack-sm" style="font-size:0.88em;">
-          <div style="display:flex;justify-content:space-between;padding:14px 18px;border-radius:10px;background:var(--tw-mist);border-left:8px solid var(--tw-sapphire);">
-            <span><b>System prompt</b></span><span style="font-family:var(--tw-mono);">stable</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:14px 18px;border-radius:10px;background:var(--tw-mist);border-left:8px solid var(--tw-sapphire);">
-            <span><b>Tool definitions</b></span><span style="font-family:var(--tw-mono);">stable</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:14px 18px;border-radius:10px;background:var(--tw-mist);border-left:8px solid var(--tw-sapphire);">
-            <span><b>Early history</b></span><span style="font-family:var(--tw-mono);">stable</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:14px 18px;border-radius:10px;background:var(--tint-flamingo);border-left:8px solid var(--tw-flamingo);">
-            <span><b>New message</b></span><span style="font-family:var(--tw-mono);">changes</span>
-          </div>
+    <div class="optmap" id="optmap">
+      <div class="row sys">
+        <div class="layer"><b>System prompt</b></div>
+        <div class="tech fragment fade-in" data-fragment-index="0">
+          <span class="chip compress">Prompt compression</span>
+          <span class="note">rewrite long instructions into shorter equivalents &mdash; same meaning, fewer tokens</span>
         </div>
       </div>
-      <div class="col">
-        <div class="stack-sm">
-          <div class="fragment fade-in callout" data-fragment-index="0"
-               data-cost="0.0378" data-hint="full price on the whole prefix">
-            <b>Without caching:</b> the whole stable prefix is re-charged at full price &mdash; every turn.
-          </div>
-          <div class="fragment fade-in callout" data-fragment-index="1" style="border-left-color:var(--tw-jade);"
-               data-cost="0.0384" data-hint="cache hit: prefix billed ~10%"
-               data-tokens="6150">
-            <b>With a cache hit:</b> the prefix is billed at ~10%. Only the new tokens pay full price.
-          </div>
-          <div class="fragment fade-in" data-fragment-index="2">
-            <div class="bignum"><div class="n">~85%<span class="unit"> less</span></div><div class="lbl">projected input-token cost on cached turns</div></div>
-          </div>
+      <div class="row tools">
+        <div class="layer"><b>Tool definitions</b></div>
+        <div class="tech fragment fade-in" data-fragment-index="1">
+          <span class="chip filter">Tool filtering</span>
+          <span class="chip compress">+ compression</span>
+          <span class="note">expose only the tools this request needs &mdash; and describe them tersely</span>
+        </div>
+      </div>
+      <div class="row hist">
+        <div class="layer"><b>Conversation history</b></div>
+        <div class="tech fragment fade-in" data-fragment-index="2">
+          <span class="chip prune">Context pruning</span>
+          <span class="chip summary">+ summarization</span>
+          <span class="note">drop stale tool output; fold old turns into a running summary</span>
+        </div>
+      </div>
+      <div class="row new">
+        <div class="layer"><b>New message</b></div>
+        <div class="tech fragment fade-in" data-fragment-index="3">
+          <span class="chip none">Always fresh</span>
+          <span class="note">the churn &mdash; nothing to trim, it changes every single turn</span>
         </div>
       </div>
     </div>
   `,
-  notes: `The meter here shows the target economics of a cache hit - be explicit that the dollar figure depends on a provider actually billing the cached prefix at a discount. What's real today, measured on the next slide: the byte-stable prefix construction that makes a cache hit possible at all. Point: caching doesn't cut tokens, it cuts the PRICE of the repeated ones - so the token gauge barely moves while cost growth flattens.`,
-});
-
-Deck.add({
-  id: "pc-plan",
-  html: `
-    <div class="slide-head">
-      <div class="kicker">02 &middot; Where it plugs in</div>
-      <h2>Two levers, no loop changes</h2>
-    </div>
-    <div class="card-grid cols-2" style="margin-top:20px;">
-      <div class="tw-card turmeric">
-        <div class="cap">Send fewer tokens</div>
-        <div class="body">The four techniques &mdash; pruning, summarization, tool filtering, compression &mdash; each remove a different kind of waste. <b>Live</b>, each behind its own flag, all measured in the notebook.</div>
-      </div>
-      <div class="tw-card wave">
-        <div class="cap">Cache the stable prefix</div>
-        <div class="body">A <code>ProviderCacheAdapter</code> seam sits at the API boundary, ready for a vendor-specific cache hint &mdash; the default passes requests through unchanged.</div>
-      </div>
-    </div>
-    <div class="callout" style="margin-top:20px;">
-      Already live: <b>cache-friendly prompt construction</b> (next) builds the byte-stable prefix a cache can actually reuse &mdash; the part every provider's cache needs before it can do anything.
-    </div>
-  `,
-  notes: `Reassure the room this isn't special-cased: it's the same plug-in pattern every optimization uses. The two new techniques (tool filtering, compression) both wrap the model call via a decorator; the two history ones plug in as a history policy. The deterministic construction caching depends on is implemented and measured - next section - the vendor-specific cache_control hint is a seam waiting for the first provider that needs it.`,
+  notes: `Krishna Chaitanya. The four prompt-optimization techniques aren't a grab-bag - each targets a different LAYER of the request. Click through one layer at a time: (1) the SYSTEM PROMPT is fixed text we author, so prompt compression rewrites it shorter; (2) TOOL DEFINITIONS get filtered to just what the request needs, then compacted; (3) CONVERSATION HISTORY is where the tokens really pile up - prune stale tool output and summarize old turns; (4) the NEW MESSAGE is the only genuinely fresh part, so there's nothing to trim there. Land it: caching (coming after cache-friendly prompts) is the complementary lever - it makes the tokens that MUST repeat cheaper, rather than fewer.`,
 });
 
 Deck.add({

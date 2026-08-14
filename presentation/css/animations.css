@@ -244,6 +244,40 @@ section.present .notebook-cue { animation: tw-pop 0.5s 0.35s cubic-bezier(.2,.7,
 .sumlab[data-state="3"] .ba .before .v { text-decoration: line-through; }
 
 /* =======================================================================
+   PROMPT-OPTIMIZATION MAP  (which technique trims which prompt layer)
+   Four rows revealed one click at a time; the row whose technique chip
+   is now visible lifts and colours in via :has().
+   ======================================================================= */
+.optmap { display: flex; flex-direction: column; gap: 16px; margin-top: 26px; }
+.optmap .row {
+  display: grid; grid-template-columns: 260px 1fr; align-items: center; gap: 22px;
+  border: 1px solid var(--tw-hair); border-radius: 12px; padding: 16px 20px; background: #fff;
+  border-left: 8px solid var(--tw-hair); opacity: 0.55; transition: all 0.4s ease;
+}
+.optmap .row .layer { font-size: 1.02em; }
+.optmap .row .layer b { color: var(--tw-ink); }
+.optmap .row .tech { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.optmap .row .tech .chip {
+  font-family: var(--tw-mono); font-size: 0.72em; font-weight: 700; white-space: nowrap;
+  padding: 5px 12px; border-radius: 999px; background: var(--tw-mist); color: var(--tw-wave);
+}
+.optmap .row .tech .note { font-size: 0.8em; color: var(--tw-ink-soft); flex-basis: 100%; }
+/* colour each technique family to match the four-techniques grid */
+.optmap .chip.compress { background: var(--tint-turmeric); color: #8a5a00; }
+.optmap .chip.filter   { background: var(--tint-turmeric); color: #8a5a00; }
+.optmap .chip.prune    { background: var(--tint-sapphire); color: var(--tw-wave); }
+.optmap .chip.summary  { background: var(--tint-sapphire); color: var(--tw-wave); }
+.optmap .chip.none     { background: var(--tint-flamingo); color: #b03a51; }
+/* the row lights up once its technique chip has been revealed */
+.optmap .row.sys   { border-left-color: var(--tw-turmeric); }
+.optmap .row.tools { border-left-color: var(--tw-turmeric); }
+.optmap .row.hist  { border-left-color: var(--tw-sapphire); }
+.optmap .row.new   { border-left-color: var(--tw-flamingo); }
+.optmap .row:has(> .tech.fragment.visible) {
+  opacity: 1; box-shadow: 0 10px 30px rgba(0,61,79,0.12); transform: translateX(6px);
+}
+
+/* =======================================================================
    ROUTING LADDER  (optimization showcase - keeps its step animation)
    ======================================================================= */
 .ladder { display: grid; grid-template-columns: 190px 1fr; grid-template-rows: 100%; gap: 30px; align-items: center; height: 370px; margin-top: 8px; }

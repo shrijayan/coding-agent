@@ -1938,3 +1938,35 @@ added. All three sessions' untracked scratch files (`_debug_*.py`,
 left to leave alone.
 
 [2026-08-14] Presentation: added a concept slide (id: sum-concept) to slides/20-summarization.js, placed right after the sum-sep separator (now slide 10/37). Split layout, two halves: LEFT = "Use it when / Skip it when" decision panels (long sessions + stale old turns + cost-sensitive vs short tasks + verbatim-details-needed, the latter cross-referencing context-window); RIGHT = the summary-type menu: Running summary flagged LIVE IN THE REPO (the only kind this agent implements - cached running summary + recent-verbatim), One-shot re-summarize (why we don't: cost grows with history), Query-based, plus a footnote that bulky tool output gets pruned by context-window instead. All claims grounded in src/coding_agent/optimizations/conversation_summary.py. Verified via local server + Chrome: renders at index 9, no overflow on 652px canvas, deck 36 -> 37. NOT committed.
+
+[2026-08-14] Presentation: reworked the prompt-optimization / caching slides to
+remove a duplicate visual and separate "send fewer tokens" from "cache the
+repeated ones". Three edits:
+1. slides/30-prompt-caching.js: repurposed the `pc-concept` slide (was the
+   "Same prefix, every single call" caching layered-boxes visual, rendered slide
+   15) into `pc-optmap` — "Which technique trims which layer". Same four prompt
+   sections (System prompt / Tool definitions / Conversation history / New
+   message) but with the stable/changes labels removed; instead each row reveals,
+   one click at a time, which optimization technique targets it: system prompt ->
+   prompt compression; tool definitions -> tool filtering (+ compression);
+   conversation history -> context pruning + summarization; new message -> nothing
+   to trim. Dropped the HUD (no longer a token/cost demo).
+2. slides/30-prompt-caching.js: deleted the `pc-plan` slide ("Two levers, no loop
+   changes") — its prompt-opt half was redundant with the four-techniques grid +
+   the new pc-optmap, and its caching half moved (below).
+3. slides/35-cache-friendly-prompts.js: appended a new `cf-payoff` slide after
+   `cf-notebook` (rendered slide 21) carrying the caching economics salvaged from
+   the old pc-concept right column (without caching = full price / cache hit =
+   ~10% / ~85% less bignum) plus the ProviderCacheAdapter seam text from pc-plan.
+   Kept the HUD (6,150 tok / $0.0360) here.
+Added a `.optmap` CSS block to css/animations.css (row layout + technique chips,
+colour-coded to match the four-techniques grid: turmeric = compression/filtering,
+sapphire = pruning/summarization, flamingo = the always-fresh new message; active
+row lifts via `:has(> .tech.fragment.visible)`). Net deck total unchanged at 36
+(-1 in section 30, +1 in section 35). Verified in the integrated browser: slide
+15 shows the four dim layers then reveals each technique chip + row highlight on
+click (confirmed via a temporary CSS force-visible override, since removed); slide
+21 renders the caching payoff with HUD + ProviderCacheAdapter. Left untouched
+(flagged): `pc-notebook` still references cache_report/--enable
+cache-friendly-prompts but stays in section 30; pc-sep separator + config.js
+section title still say "Prompt optimization & caching". NOT committed.
