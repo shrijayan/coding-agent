@@ -1936,3 +1936,5 @@ count (148) both accounted for by summing what each session's own log entry
 added. All three sessions' untracked scratch files (`_debug_*.py`,
 `_playground*`) were already cleaned up by the time of this pass - none
 left to leave alone.
+
+[2026-08-14] Presentation: added a concept slide (id: sum-concept) to slides/20-summarization.js, placed right after the sum-sep separator (now slide 10/37). Split layout, two halves: LEFT = "Use it when / Skip it when" decision panels (long sessions + stale old turns + cost-sensitive vs short tasks + verbatim-details-needed, the latter cross-referencing context-window); RIGHT = the summary-type menu: Running summary flagged LIVE IN THE REPO (the only kind this agent implements - cached running summary + recent-verbatim), One-shot re-summarize (why we don't: cost grows with history), Query-based, plus a footnote that bulky tool output gets pruned by context-window instead. All claims grounded in src/coding_agent/optimizations/conversation_summary.py. Verified via local server + Chrome: renders at index 9, no overflow on 652px canvas, deck 36 -> 37. NOT committed.

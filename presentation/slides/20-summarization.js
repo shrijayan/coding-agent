@@ -1,6 +1,7 @@
 /* ============================================== 20 · CONVERSATION SUMMARIZATION
-   Technique #1 - LIVE in the repo. The centrepiece animation: history
-   collapses into a running summary, tokens drop while cost ticks up for the
+   Technique #1 - LIVE in the repo. The concept slide (when it pays off +
+   which kind to use), then the centrepiece animation: history collapses
+   into a running summary, tokens drop while cost ticks up for the
    summarize call. This is an OPTIMIZATION SHOWCASE, so it keeps its
    step-by-step fragments and the HUD.
 ============================================================================ */
@@ -18,6 +19,63 @@ Deck.add({
     </div>
   `,
   notes: `Shrijayan. The problem in one line: every turn re-sends the whole transcript, and the transcript only grows. Summarization caps that.`,
+});
+
+Deck.add({
+  id: "sum-concept",
+  html: `
+    <div class="slide-head">
+      <div class="kicker">01 &middot; Conversation summarization</div>
+      <h2>When it pays off &mdash; and which kind to use</h2>
+    </div>
+    <div class="split top" style="grid-template-columns:0.92fr 1.08fr;align-items:stretch;">
+      <div class="col" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="flex:1;border-radius:8px;background:var(--tint-jade);padding:14px 18px;">
+          <div style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--tw-ink);margin-bottom:8px;"><span style="color:var(--tw-jade);font-size:1.05em;">${TW.icon('check')}</span>Use it when&hellip;</div>
+          <div style="font-size:0.78em;color:var(--tw-ink-soft);line-height:1.5;">
+            <div style="margin-bottom:6px;"><b>Long sessions</b> &mdash; 20+ turns in, the transcript dominates every call.</div>
+            <div style="margin-bottom:6px;"><b>Old turns are stale anyway</b> &mdash; the plot matters, not the exact words.</div>
+            <div><b>Cost-sensitive</b> &mdash; every call is billed per token, and history only grows.</div>
+          </div>
+        </div>
+        <div style="flex:1;border-radius:8px;background:var(--tint-flamingo);padding:14px 18px;">
+          <div style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--tw-ink);margin-bottom:8px;"><span style="color:var(--tw-flamingo);font-size:1.05em;">${TW.icon('scissors')}</span>Skip it when&hellip;</div>
+          <div style="font-size:0.78em;color:var(--tw-ink-soft);line-height:1.5;">
+            <div style="margin-bottom:6px;"><b>Short tasks</b> &mdash; the summarizer call itself can cost more than it saves.</div>
+            <div><b>Verbatim details still needed</b> &mdash; a summary is lossy. That's <b>context-window's</b> job: prune &amp; re-fetch on demand.</div>
+          </div>
+        </div>
+      </div>
+      <div class="col" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;gap:12px;align-items:center;padding:11px 16px;border-radius:8px;background:var(--tw-mist);">
+          <span style="font-size:1.15em;color:var(--tw-sapphire);flex:none;">${TW.icon('summarize')}</span>
+          <div style="min-width:0;">
+            <div style="font-family:var(--tw-mono);font-weight:700;font-size:0.76em;color:var(--tw-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Running summary &nbsp;${TW.pill('live')}</div>
+            <div style="font-size:0.76em;color:var(--tw-ink-soft);line-height:1.35;">Old turns fold into a cached summary; recent ones stay verbatim.</div>
+            <div style="font-size:0.7em;color:var(--tw-muted);margin-top:3px;"><b>Use for:</b> one long evolving task</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;padding:11px 16px;border-radius:8px;background:var(--tw-mist);">
+          <span style="font-size:1.15em;color:var(--tw-muted);flex:none;">${TW.icon('stack')}</span>
+          <div style="min-width:0;">
+            <div style="font-family:var(--tw-mono);font-weight:700;font-size:0.76em;color:var(--tw-ink);">One-shot re-summarize</div>
+            <div style="font-size:0.76em;color:var(--tw-ink-soft);line-height:1.35;">Whole transcript re-summarized from scratch &mdash; simple, but the cost grows with history. Why we don't.</div>
+            <div style="font-size:0.7em;color:var(--tw-muted);margin-top:3px;"><b>Use for:</b> quick handoffs</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;padding:11px 16px;border-radius:8px;background:var(--tw-mist);">
+          <span style="font-size:1.15em;color:var(--tw-muted);flex:none;">${TW.icon('context')}</span>
+          <div style="min-width:0;">
+            <div style="font-family:var(--tw-mono);font-weight:700;font-size:0.76em;color:var(--tw-ink);">Query-based</div>
+            <div style="font-size:0.76em;color:var(--tw-ink-soft);line-height:1.35;">Only the parts that answer the current question get summarized.</div>
+            <div style="font-size:0.7em;color:var(--tw-muted);margin-top:3px;"><b>Use for:</b> mixed-topic sessions</div>
+          </div>
+        </div>
+        <p class="muted" style="font-size:0.72em;margin-top:2px;">Bulky tool output? This agent <b>prunes</b> it instead &mdash; that's context-window's job.</p>
+      </div>
+    </div>
+  `,
+  notes: `Shrijayan. Two halves, one message each. LEFT: the decision rule - summarization wins on long sessions where old turns are stale; it loses on short tasks (the summarize call is real money) and whenever verbatim detail still matters (that's context-window territory - sets up technique 04). RIGHT: the menu - this agent implements exactly ONE kind, the running summary: fold only what's new into a cached summary, recent stays verbatim. The other two exist in the wild but deliberately not here: one-shot re-summarization grows unbounded, query-based needs a retrieval layer.`,
 });
 
 Deck.add({
