@@ -6,7 +6,7 @@ most recent few messages are still sent verbatim. This is the first
 real entry in AVAILABLE_OPTIMIZATIONS - see AGENTS.md's "How to add a
 new optimization" for the general pattern this follows.
 
-Two things worth understanding before copying this pattern:
+Three things worth understanding before copying this pattern:
 
 1. Summarizing is itself a real model call, so it costs real tokens.
    To keep that cost bounded as a conversation gets very long, this
@@ -19,7 +19,16 @@ Two things worth understanding before copying this pattern:
    already resolves a fresh OptimizationBundle per task for exactly
    this reason).
 
-2. A cut point can never fall between a tool_use message and its
+2. The summary itself must stay short. Output tokens are billed at
+   several times the rate of input tokens on most models, and once the
+   threshold is crossed, a fresh summarization call fires on nearly
+   every subsequent turn (see `prepare` below) - so a summary that reads
+   like a detailed transcript gets *regenerated and rebilled* that many
+   times over, which can cost more than the raw messages it replaced.
+   The win only shows up when the summary is a short list of hard facts,
+   not prose: see `_SUMMARY_SYSTEM_PROMPT`.
+
+3. A cut point can never fall between a tool_use message and its
    matching tool_result message - if it did, whichever side lost its
    half would reference a tool call that doesn't exist from that side's
    perspective, and the provider's API rejects that outright. See
@@ -36,13 +45,17 @@ from coding_agent.optimizations.history_policy import HistoryContext, HistoryPol
 from coding_agent.optimizations.history_utils import safe_keep_from
 
 _SUMMARY_SYSTEM_PROMPT = (
-    "Summarize the conversation so far, concisely but precisely: what the "
-    "user is trying to accomplish, and everything already done - list the "
-    "*exact* file paths created/read/edited and the *exact* commands run, "
-    "with their outcomes. Do not generalize or omit specific names (e.g. "
-    "say 'created one.txt, two.txt, and three.txt', never just 'created "
-    "some files') - whichever specifics you drop here are permanently "
-    "gone from the conversation. Also note anything still unresolved."
+    "Compress the conversation so far into the shortest possible record, not "
+    "a transcript. Output a terse bulleted list, a handful of bullets at "
+    "most - never prose, never restate reasoning or dialogue. Keep only hard "
+    "facts the agent needs to act correctly later: the user's goal, in one "
+    "bullet; the *exact* file paths created/read/edited and *exact* commands "
+    "run, each as its own short bullet naming it plainly (never 'created "
+    "some files' - name them); and, only if something is still unresolved, "
+    "one bullet for that. Every word here gets resent and rebilled on every "
+    "future turn, so omit anything that doesn't change what the agent does "
+    "next - no narration, no explanations, no restating what a file's "
+    "contents are once its path has been named."
 )
 
 _SUMMARY_NOTE_PREFIX = (

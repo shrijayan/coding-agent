@@ -186,6 +186,10 @@ def build() -> OptimizationBundle:
         min_chars_to_prune=config.context_prune_min_chars_to_prune,
         tracker=tracker,
     )
+
+    if not config.context_window_skills_enabled:
+        return OptimizationBundle(history_policy=policy)
+
     library = load_skills_dir()
     skill_tool = LoadSkillTool(library=library, on_load=tracker.record_skill_load)
 

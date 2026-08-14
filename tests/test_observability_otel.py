@@ -244,6 +244,7 @@ def _set_base_config_env(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_LOOP_GUARD_HALT_AFTER", "4")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES", "6")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE", "400")
+    monkeypatch.setenv("AGENT_CONTEXT_WINDOW_SKILLS_ENABLED", "true")
     monkeypatch.setenv("AGENT_DEDUP_MIN_CHARS", "200")
 
 

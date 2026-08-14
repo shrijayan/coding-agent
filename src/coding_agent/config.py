@@ -69,6 +69,11 @@ class Config:
     loop_guard_halt_after: int
     context_prune_keep_recent_messages: int
     context_prune_min_chars_to_prune: int
+    context_window_skills_enabled: bool
+    """Whether --enable context-window also registers the on-demand skills
+    menu/load_skill tool, on top of pruning. Skills add a fixed per-call
+    cost (system-prompt menu + tool schema) regardless of whether pruning
+    ever fires - set to false to measure pruning's savings in isolation."""
     dedup_min_chars: int
     routing_ollama_base_url: str
     routing_quality_gate_enabled: bool
@@ -133,6 +138,9 @@ class Config:
             ),
             context_prune_min_chars_to_prune=_require_int(
                 "AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE"
+            ),
+            context_window_skills_enabled=_require_bool(
+                "AGENT_CONTEXT_WINDOW_SKILLS_ENABLED"
             ),
             dedup_min_chars=_require_int("AGENT_DEDUP_MIN_CHARS"),
             routing_ollama_base_url=(
@@ -249,6 +257,10 @@ def _require_int(name: str) -> int:
         raise MissingConfigError(
             f"Environment variable '{name}' must be a whole number, got: '{value}'"
         ) from error
+
+
+def _require_bool(name: str) -> bool:
+    return _parse_bool(name, _require_str(name))
 
 
 # The exact strings we accept for a boolean env var, kept explicit rather

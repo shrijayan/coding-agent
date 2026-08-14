@@ -1829,3 +1829,110 @@ pricing 1M/1M = $0.0490, catalog contains nemo and no longer gemma;
 `tests/test_models_config.py` 11 passed.
 
 [2026-08-14] Presentation: added a new "What's in the box — the facts" slide (id: base-facts) to slides/10-base-agent.js, inserted right after the agent-loop slide (rendered position 6/36). It's a 4-row icon-row fact sheet covering: the loop (agent/loop.py, one question = many paid API calls), the 5 tools, built-in measurement (real tokens via /usage + cost cap), and the OptimizationBundle extension point. Verified via local http.server + Chrome: renders at index 5, no vertical overflow on the 652px canvas, deck total went 35 -> 36. NOT committed.
+
+### [2026-08-14] context-window: skills-isolation knob, tuned demo, and a verification pass on a concurrently-edited notebook
+
+Following up on the negative context-window benchmark (see the two entries
+above): implemented the fixes the user asked for, then verified a second
+agent's concurrent fixes to a *different* section of the same notebook
+(conversation-summary) - both were editing `notebooks/optimizing_llm_apps.ipynb`
+at the same time, so this entry also notes how that was handled safely.
+
+**Code change** (not notebook-only, agreed explicitly): `context-window`
+bundles two mechanisms with opposite cost signs - pruning (saves) and
+on-demand skill loading (a fixed per-call tax whether or not a skill ever
+loads). Added `AGENT_CONTEXT_WINDOW_SKILLS_ENABLED` (new required env
+knob, default `true` in `.env.example`, `_require_bool` added to
+config.py alongside `_require_int`/`_require_str`) - set to `false`,
+`context_window.build()` returns pruning-only (`extra_tools`/
+`system_prompt_suffix` both `None`), so pruning's savings can be measured
+without the skills tax on top. New test
+`test_build_with_skills_disabled_returns_pruning_only`. Since this is now
+a required knob, every other test that builds a full `Config` needed it
+too - `test_loop_guard.py`, `test_observability_otel.py`,
+`test_context_window.py` (same "one new required knob breaks every
+full-Config test until each is updated" pattern noted in the loop-guard/
+context-window entry above). `uv run pytest`: 148 passed (was 147).
+
+**Notebook**: the file was being actively rewritten by another agent
+concurrently (a full setup-cell consolidation pass, unrelated markdown
+tightening, and their own enlargement of the `legacy_utils.py` fixture I'd
+added earlier - confirmed by re-reading cell content between edits, not
+assumed). To avoid clobbering that work, patched by exact cell `id`
+lookup with an assert-old-content-matches guard before each write, kept
+edits to cells confirmed untouched since my last read, and re-verified
+(`ast.parse` every code cell + `uv run pytest`) immediately after each
+write rather than batching. Three targeted changes:
+1. The primary `+ context-window` cell (the one feeding "Stack them"/
+   "Scoreboard", `DEMO_PROMPTS`) now tightens
+   `AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES` (6->3) and
+   `AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE` (400->150) for just that
+   comparison, save/restored around the run (not touching the shipped
+   `.env.example` default) - the actual, substantive fix, not just an
+   added-alongside demo.
+2. New cell after the pruning demo: reruns it with
+   `AGENT_CONTEXT_WINDOW_SKILLS_ENABLED=false` and a 3-way
+   `compare(baseline_ctx, opt_context2, opt_context_pruning_only)`,
+   demonstrating the new knob in the same notebook that motivated it.
+3. Fixed an env-var-bleed bug found while verifying the other agent's
+   concurrent addition (see below): their new "summary shines" cell set
+   `AGENT_SUMMARY_THRESHOLD_MESSAGES`/`AGENT_SUMMARY_KEEP_RECENT_MESSAGES`
+   via bare `os.environ[...] =` with no restore - harmless top-to-bottom,
+   but a later out-of-order re-run of the original Opt-1 cell (a real
+   workshop interaction pattern) would silently inherit 20/8 instead of
+   the 8 it documents itself as tuned to. Wrapped both their cell and my
+   own new config-tuning cell in save/restore (`try/finally`, no
+   dependency on the actively-changing shared harness cell, to keep this
+   patch self-contained).
+
+**Verified the other agent's fixes**: their notebook addition (fixture
++ prompts + tuned-threshold run, "Optimization 1" section) parses
+(`ast.parse`), the fixture executes to valid Python, the two env var
+names match `config.py`'s actual field names exactly, and
+`keep_recent(8) < threshold(20)` satisfies
+`ConversationSummaryPolicy.__post_init__`'s validation - no bug beyond
+the env-bleed one above, which is now fixed. Separately, they also
+tightened `_SUMMARY_SYSTEM_PROMPT` in `conversation_summary.py` itself
+(terse bullets instead of prose, since output tokens bill several times
+input and a verbose summary regenerates every threshold-crossing turn) -
+reran the full suite after that landed too: no test asserts the old
+prompt text, 148 still pass.
+
+Not verified: an actual run against a live model for any of today's
+changes - same standing caveat as every prior notebook entry. Left the
+other agent's `_debug_summary_v2.py`/`_playground_v2` scratch files alone
+(untracked, apparently still in active use for their own verification).
+
+### [2026-08-14] Reconciliation pass across three concurrent sessions editing this notebook
+
+By this point three sessions had touched `notebooks/optimizing_llm_apps.ipynb`
+and related source in the same working tree without coordinating directly:
+this session's own `context-window` fixture-enlargement fix (see above), a
+second session's `context-window` code-level fix
+(`AGENT_CONTEXT_WINDOW_SKILLS_ENABLED` + tightened-env demo + isolation
+cell, also above), and a third session's `conversation-summary` fixture +
+tuned-threshold demo + `_SUMMARY_SYSTEM_PROMPT` rewrite. Asked to reconcile
+and confirm nothing was lost.
+
+Checked: notebook JSON parses, all 58 cells have unique non-empty `id`s (no
+merge corruption), every code cell's source parses with `ast.parse`, and
+`uv run pytest` - 148 passed, matching the second session's own count. Read
+every cell touched by any of the three sessions front-to-back rather than
+trusting the diff stat.
+
+Found one real inconsistency from the overlap: my `context-window` markdown
+cell still said "neither file ever gets close to `min_chars_to_prune` (400
+chars)" - true when I wrote it, but the second session's later fix tightened
+that same comparison to 150 chars/keep_recent=3 specifically to give pruning
+a fighting chance there. Updated the markdown to cite the actual tightened
+values instead of the stale default, and to say pruning still finds
+"almost nothing" rather than implying it never runs at all. No other
+inconsistencies found - the two `context-window` changes (fixture size vs.
+a skills-disable knob) are complementary, not overlapping, and the
+`conversation-summary` section was internally consistent on its own.
+
+No files or cells were lost in the process - final cell count (58) and test
+count (148) both accounted for by summing what each session's own log entry
+added. All three sessions' untracked scratch files (`_debug_*.py`,
+`_playground*`) were already cleaned up by the time of this pass - none
+left to leave alone.

@@ -212,6 +212,7 @@ def test_build_returns_bundle_with_all_three_hooks(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_LOOP_GUARD_HALT_AFTER", "4")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES", "6")
     monkeypatch.setenv("AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE", "400")
+    monkeypatch.setenv("AGENT_CONTEXT_WINDOW_SKILLS_ENABLED", "true")
     monkeypatch.setenv("AGENT_DEDUP_MIN_CHARS", "200")
     bundle = context_window.build()
 
@@ -219,6 +220,28 @@ def test_build_returns_bundle_with_all_three_hooks(monkeypatch) -> None:
     assert bundle.extra_tools is not None and len(bundle.extra_tools) == 1
     assert bundle.system_prompt_suffix is not None
     assert "pytest-conventions" in bundle.system_prompt_suffix
+
+
+def test_build_with_skills_disabled_returns_pruning_only(monkeypatch) -> None:
+    # Same full env as the test above, except the skills flag - lets pruning's
+    # savings be measured without the fixed menu/tool-schema tax on top.
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("AGENT_MAX_ITERATIONS", "25")
+    monkeypatch.setenv("AGENT_BASH_TIMEOUT_SECONDS", "60")
+    monkeypatch.setenv("AGENT_SUMMARY_THRESHOLD_MESSAGES", "10")
+    monkeypatch.setenv("AGENT_SUMMARY_KEEP_RECENT_MESSAGES", "4")
+    monkeypatch.setenv("AGENT_LOOP_GUARD_NUDGE_AFTER", "2")
+    monkeypatch.setenv("AGENT_LOOP_GUARD_HALT_AFTER", "4")
+    monkeypatch.setenv("AGENT_CONTEXT_PRUNE_KEEP_RECENT_MESSAGES", "6")
+    monkeypatch.setenv("AGENT_CONTEXT_PRUNE_MIN_CHARS_TO_PRUNE", "400")
+    monkeypatch.setenv("AGENT_CONTEXT_WINDOW_SKILLS_ENABLED", "false")
+    monkeypatch.setenv("AGENT_DEDUP_MIN_CHARS", "200")
+    bundle = context_window.build()
+
+    assert bundle.history_policy is not None
+    assert bundle.extra_tools is None
+    assert bundle.system_prompt_suffix is None
 
 
 # --- Command -------------------------------------------------------------------
