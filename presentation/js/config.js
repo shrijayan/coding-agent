@@ -12,7 +12,7 @@
 window.SPEAKERS = [
   { id: "adithya", name: "Adithya K P", role: "M L Engineer", org: "Thoughtworks" },
   { id: "krishna", name: "P D Krishna Chaitanya", role: "AI Engineer", org: "Thoughtworks" },
-  { id: "shrijayan", name: "Shrijayan Rajendran", role: "AI Engineer", org: "Thoughtworks" },
+  { id: "shrijayan", name: "Shrijayan Rajendran", role: "AI Engineer", org: "Thoughtworks", ownsBaseAgent: true },
 ];
 
 // Keyed by the id each slide file uses to look itself up (TW.techMeta("routing"), ...).

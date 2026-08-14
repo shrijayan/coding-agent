@@ -53,7 +53,7 @@ Deck.add({
       <div class="kicker">How this session runs</div>
       <h2>See it, run it, measure it</h2>
     </div>
-    <div class="split top" style="grid-template-columns:1.15fr 0.85fr;">
+    <div class="split top qr-split">
       <div class="col">
         <div class="icon-rows">
           <div class="icon-row wave"><div class="ic">${TW.icon('bolt')}</div><div class="tx"><b>See the idea</b> &mdash; one animated slide, almost no text.</div></div>
@@ -62,17 +62,11 @@ Deck.add({
         </div>
         <p class="muted" style="font-size:0.82em;margin-top:18px;">During the demos, a live token &amp; cost meter appears top-right &mdash; real tracking from the agent, not a mock-up.</p>
       </div>
-      <div class="col">
-        <div class="visual-panel">
-          <div class="kicker" style="margin-bottom:14px;">Five techniques</div>
-          <div class="stack-sm" style="font-family:var(--tw-sans);font-size:0.92em;">
-            ${TW.agendaRow('summarization')}
-            ${TW.agendaRow('prompt-caching')}
-            ${TW.agendaRow('routing')}
-            ${TW.agendaRow('context-window')}
-            ${TW.agendaRow('loop-prevention')}
-          </div>
+      <div class="col qr-col">
+        <div class="qr-box">
+          <img src="assets/colab-notebook-qr.png" alt="Scan to open the notebook in Colab" />
         </div>
+        <span class="qr-label">Scan to open the notebook</span>
       </div>
     </div>
   `,

@@ -47,6 +47,23 @@
 .cover .qr-wrap img { height: 130px; border-radius: 8px; background: #fff; padding: 6px; }
 .cover .qr-wrap span { font-size: 0.6em; color: var(--tw-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 
+/* ======================================================= QR scan panel (agenda)
+   The QR takes ALL the space in its column: the column stretches to the
+   split's full height and the code scales up to fill it, so it stays
+   scannable from the back row of a large room. */
+.split.top.qr-split { grid-template-columns: 1.05fr 0.95fr; align-items: stretch; grid-auto-rows: minmax(0, 1fr); }
+.split .qr-col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+.split .qr-col .qr-box {
+  flex: 1; min-height: 0;
+  background: #fff; border-radius: 12px; padding: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.split .qr-col .qr-box img { max-width: 100%; max-height: 100%; display: block; }
+.split .qr-col .qr-label {
+  font-weight: 700; font-size: 0.72em; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--tw-ink); text-align: center;
+}
+
 /* ========================================================== SEPARATOR slide
    Reference style: dark Wave background, a short colored accent bar, one
    huge serif title, one line of context. Accent via --sep-accent. */

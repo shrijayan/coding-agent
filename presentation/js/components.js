@@ -74,12 +74,13 @@
         const badge = TW.speakerTechIcons(s.id)
           .map((n) => `<span class="ic">${TW.icon(n)}</span>`)
           .join("");
+        const owns = s.ownsBaseAgent ? `Base Agent . ${TW.speakerOwns(s.id)}` : TW.speakerOwns(s.id);
         return `
         <div class="presenter ${letters[i] || "a"}">
           <div class="pbadge">${badge}</div>
           <div class="pname">${s.name}</div>
           <div class="prole">${s.role} &middot; ${s.org}</div>
-          <div class="powns">${TW.speakerOwns(s.id)}</div>
+          <div class="powns">${owns}</div>
         </div>`;
       }).join("");
     },
@@ -96,11 +97,6 @@
     techMeta(id) {
       const t = tech(id);
       return `<div class="sep-meta">${TW.pill(t.status)}<div class="flag">${t.flag}</div></div>`;
-    },
-    // One row of the agenda's "Five techniques" list (00-intro.js).
-    agendaRow(id) {
-      const t = tech(id);
-      return `<div>${TW.pill(t.status, PILL_LABEL_SHORT[t.status])} &nbsp;${t.title}</div>`;
     },
     // One row of the closing recap table (90-closing.js).
     recapRow(id) {
