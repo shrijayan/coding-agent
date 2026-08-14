@@ -70,5 +70,5 @@ Deck.add({
       </div>
     </div>
   `,
-  notes: `Set expectations: idea (animation) -> notebook (you run it) -> measure. All five techniques are live and wired into the repo - each one runs end-to-end in the notebook you have open.`,
+  notes: `Set expectations: idea (animation) -> notebook (you run it) -> measure. All six techniques are live and wired into the repo - each one runs end-to-end in the notebook you have open.`,
 });

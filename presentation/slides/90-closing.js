@@ -1,5 +1,5 @@
 /* ======================================================== 90 · CLOSING
-   Recap of the five techniques -> the extension point (as a concept, not
+   Recap of the six techniques -> the extension point (as a concept, not
    code) -> a branded thank-you. No HUD; no fragments.
 ============================================================================ */
 
@@ -8,7 +8,7 @@ Deck.add({
   html: `
     <div class="slide-head">
       <div class="kicker">Recap</div>
-      <h2>Five levers, one honest meter</h2>
+      <h2>Six levers, one honest meter</h2>
     </div>
     <table class="recap">
       <thead>
@@ -18,13 +18,14 @@ Deck.add({
         ${TW.recapRow('summarization')}
         ${TW.recapRow('prompt-caching')}
         ${TW.recapRow('routing')}
-        ${TW.recapRow('context-window')}
+        ${TW.recapRow('context-pruning')}
+        ${TW.recapRow('context-skills')}
         ${TW.recapRow('loop-prevention')}
       </tbody>
     </table>
     <p class="muted" style="font-size:0.82em;margin-top:16px;">Every row is proven the same way: run the task, read the meter, compare before vs after. <b>No estimates.</b></p>
   `,
-  notes: `Recap. All five are live and wired into the repo, and all five plug into the SAME extension point. The through-line of the whole session: prove it with real numbers, never claim it.`,
+  notes: `Recap. All six are live and wired into the repo, and all six plug into the SAME extension point. The through-line of the whole session: prove it with real numbers, never claim it.`,
 });
 
 Deck.add({

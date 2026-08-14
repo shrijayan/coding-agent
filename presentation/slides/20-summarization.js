@@ -127,7 +127,7 @@ Deck.add({
       </div>
     </div>
   `,
-  notes: `Shrijayan. Two halves, one message each. LEFT: the decision rule - summarization wins on long sessions where old turns are stale; it loses on short tasks (the summarize call is real money) and whenever verbatim detail still matters (that's context-window territory - sets up technique 04). RIGHT: the full menu - one LIVE kind (running summary: fold only what's new, so the summarize call stays bounded), the other three a one-file swap in conversation_summary.py, and the extractive footer as the zero-LLM-cost alternative. Message: pick per use case.`,
+  notes: `Shrijayan. Two halves, one message each. LEFT: the decision rule - summarization wins on long sessions where old turns are stale; it loses on short tasks (the summarize call is real money) and whenever verbatim detail still matters (that's context-window territory - sets up technique 04a). RIGHT: the full menu - one LIVE kind (running summary: fold only what's new, so the summarize call stays bounded), the other three a one-file swap in conversation_summary.py, and the extractive footer as the zero-LLM-cost alternative. Message: pick per use case.`,
 });
 
 Deck.add({
