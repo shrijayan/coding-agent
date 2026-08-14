@@ -101,27 +101,6 @@ Deck.add({
 });
 
 Deck.add({
-  id: "cf-notebook",
-  html: `
-    <div class="center-v">
-      <div class="kicker">Your turn &mdash; hands on</div>
-      <h2>Watch the prefix stay put</h2>
-      <p class="lead" style="max-width:46ch;">Run a multi-turn task and watch the stable-prefix fingerprint stay identical while reuse climbs turn over turn.</p>
-      <div class="notebook-cue">
-        <div class="nb-ic">Jy</div>
-        <div class="nb-tx">
-          <div class="t">Notebook &rarr; &ldquo;Optimization 2b &mdash; Cache-friendly prompts&rdquo;</div>
-          <div class="s">Run the shared task set, then check the cache report for prefix reuse.</div>
-        </div>
-        <div class="nb-cmd">${TW.techFlag('cache-friendly')}</div>
-      </div>
-      <p class="muted" style="font-size:0.82em;margin-top:18px;">One stable fingerprint across every call is the win &mdash; it means a cache has something byte-stable to reuse.</p>
-    </div>
-  `,
-  notes: `Hands on. Everyone runs the multi-turn task with cache-friendly construction on and reads /cache: distinct stable hashes should be 1 (the prefix never moved), avg prefix reuse rises across sends. This is the groundwork any real prompt-cache pass builds on.`,
-});
-
-Deck.add({
   id: "cf-payoff",
   hud: true,
   tokens: 6150,
