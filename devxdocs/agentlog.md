@@ -1827,3 +1827,5 @@ agentlog entries left intact - append-only):
 Verified: `load_tiers()` resolves cheap -> mistralai/mistral-nemo (openrouter),
 pricing 1M/1M = $0.0490, catalog contains nemo and no longer gemma;
 `tests/test_models_config.py` 11 passed.
+
+[2026-08-14] Presentation: added a new "What's in the box — the facts" slide (id: base-facts) to slides/10-base-agent.js, inserted right after the agent-loop slide (rendered position 6/36). It's a 4-row icon-row fact sheet covering: the loop (agent/loop.py, one question = many paid API calls), the 5 tools, built-in measurement (real tokens via /usage + cost cap), and the OptimizationBundle extension point. Verified via local http.server + Chrome: renders at index 5, no vertical overflow on the 652px canvas, deck total went 35 -> 36. NOT committed.

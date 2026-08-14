@@ -1,7 +1,8 @@
 /* ===================================================== 10 · BASE CODING AGENT
-   What the repo is, the agent loop as ONE picture, and the cost meter's
-   entrance. Concept-first: the loop is a diagram, not code. Only the
-   cost-tracking demo uses fragments + the HUD.
+   What the repo is, the agent loop as ONE picture, the facts sheet (loop,
+   tools, measurement, extension point), and the cost meter's entrance.
+   Concept-first: the loop is a diagram, not code. Only the cost-tracking
+   demo uses fragments + the HUD.
 ============================================================================ */
 
 Deck.add({
@@ -64,6 +65,36 @@ Deck.add({
     </div>
   `,
   notes: `Walk the five steps - they're all on screen already, just point. Emphasise: the tool loop makes MANY model calls per user turn, not one. So "cost per turn" is really "sum of every call in that turn" - important later for routing.`,
+});
+
+Deck.add({
+  id: "base-facts",
+  html: `
+    <div class="slide-head">
+      <div class="kicker">The base agent</div>
+      <h2>What's in the box &mdash; the facts</h2>
+    </div>
+    <p class="lead" style="font-size:0.92em;margin-bottom:14px;">A chat loop backed by an LLM, with real tools that act on your machine. <b>~1,500 lines</b> &mdash; that's the whole thing.</p>
+    <div class="icon-rows" style="font-size:0.94em;">
+      <div class="icon-row tealL">
+        <div class="ic">${TW.icon('loop')}</div>
+        <div class="tx"><b>The loop</b> &mdash; the entire brain. Ask &rarr; model call &rarr; run a tool &rarr; feed the result back &rarr; repeat until a plain-text answer. <b>One question = many paid API calls</b>, because each tool trip around the loop is a separate one.</div>
+      </div>
+      <div class="icon-row teal">
+        <div class="ic">${TW.icon('agent')}</div>
+        <div class="tx"><b>5 tools</b> &mdash; the model's hands. <code>read_file</code> / <code>write_file</code> / <code>edit_file</code>: read, create, surgically edit files &middot; <code>bash</code>: real commands with a timeout &middot; <code>list_files</code>: explore the repo.</div>
+      </div>
+      <div class="icon-row turmeric">
+        <div class="ic">${TW.icon('gauge')}</div>
+        <div class="tx"><b>Built-in measurement</b> &mdash; real token counts, <b>never estimated</b>, from every provider response &middot; priced per model &middot; shown via <code>/usage</code> &middot; per-session cost cap. This is what every optimization gets judged against.</div>
+      </div>
+      <div class="icon-row amethyst">
+        <div class="ic">${TW.icon('stack')}</div>
+        <div class="tx"><b>The extension point</b> &mdash; every optimization plugs in through the same <code>OptimizationBundle</code>, never touching the loop. Same base, one layer at a time.</div>
+      </div>
+    </div>
+  `,
+  notes: `The fact sheet. Three things to land: (1) the loop is the entire brain and one question is MANY paid calls - say it out loud; (2) tokens are real, never estimated - that is why every before/after claim in this workshop is trustworthy; (3) everything today plugs in through one interface, OptimizationBundle, so the loop itself never changes. The /usage + cost-cap bullet is exactly what the meter on the NEXT slide visualizes.`,
 });
 
 Deck.add({
