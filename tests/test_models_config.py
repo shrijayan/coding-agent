@@ -39,12 +39,12 @@ def test_ladder_resolves_provider_from_catalog():
     """A tier names only a model; its provider comes from the catalog."""
     tiers = {t.name: t for t in load_tiers()}
     assert tiers["cheap"].provider == "openrouter"
-    assert tiers["cheap"].model == "google/gemma-3.4b"
+    assert tiers["cheap"].model == "mistralai/mistral-nemo"
 
 
 def test_catalog_metadata_is_exposed():
     meta = load_catalog_metadata(read_models_yaml())
-    cheap = meta["google/gemma-3.4b"]
+    cheap = meta["mistralai/mistral-nemo"]
     assert "description" in cheap
     assert isinstance(cheap["strengths"], list)
 

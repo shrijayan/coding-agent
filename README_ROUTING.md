@@ -98,7 +98,7 @@ routing:
   ollama_base_url: http://localhost:11434/v1
   tiers:
     - name: cheap
-      model: google/gemma-3.4b
+      model: mistralai/mistral-nemo
       difficulty_ceiling: 0.45
     - name: mid
       model: qwen/qwen3.7-flash

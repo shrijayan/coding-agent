@@ -61,16 +61,16 @@ session_cost_cap_usd: 1.00
 models:
   # --- OpenRouter workshop ladder (low -> medium -> high), prices as listed
   #     on openrouter.ai. These three are the ONLY supported OpenRouter
-  #     presets: low = google/gemma-3.4b,
+  #     presets: low = mistralai/mistral-nemo,
   #     medium = qwen/qwen3.7-flash, high = deepseek/deepseek-v4-flash-0731. ---
-  google/gemma-3.4b:
+  mistralai/mistral-nemo:
     provider: openrouter
-    input_per_million_usd: 0.05
-    output_per_million_usd: 0.10
+    input_per_million_usd: 0.019
+    output_per_million_usd: 0.03
     metadata:
       description: >-
-        Small, fast Gemma model - the cheap workhorse that should answer the
-        bulk of easy/routine requests (boilerplate, simple edits). (Low tier.)
+        Small, fast Mistral Nemo model - the cheap workhorse that should answer
+        the bulk of easy/routine requests (boilerplate, simple edits). (Low tier.)
       context_window: 128000
       strengths: [low_cost, fast, routine_edits, boilerplate]
       good_for_difficulty: [easy]
@@ -172,7 +172,7 @@ routing:
   ollama_base_url: http://localhost:11434/v1
   tiers:
     - name: cheap
-      model: google/gemma-3.4b
+      model: mistralai/mistral-nemo
       difficulty_ceiling: 0.45
     - name: mid
       model: qwen/qwen3.7-flash

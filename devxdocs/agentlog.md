@@ -1758,3 +1758,72 @@ Actions:
 [2026-08-14] Presentation: added a QR code (colab-notebook-qr.png) on the TITLE slide pointing to the Colab notebook link, positioned bottom-right, styled via .qr-wrap in layouts.css. Verified it decodes correctly with jsQR and renders without overlapping the headline.
 
 [2026-08-14] Presentation: (1) regenerated colab-notebook-qr.png at 1140x1140 (was 530x530; decoded URL via jsQR first, re-encoded with segno, white-flattened, re-verified with jsQR) so it stays crisp at big sizes. (2) Slide 3 "See it, run it, measure it": replaced the "Five techniques" right-column panel with a QR panel filling ALL available space (.split.top.qr-split + .qr-col/.qr-box/.qr-label in layouts.css; label moved OUTSIDE the white box because inside-box labels overflowed the flex box). QR now renders 558x558 on the 1375x700 canvas = ~80% of slide height (~780px on 1080p, ~1560px on 4K). Gotcha hit: .split.top's align-items:start out-specified .split.qr-split (equal specificity, later in file) so the row was content-sized and overflowed the slide bottom - fixed by .split.top.qr-split (0,3,0) + grid-auto-rows:minmax(0,1fr). Also grid-auto-rows must be used since reveal has no grid-template-rows; measured during reveal's slide transition is unreliable (mid-scale) - measure after the transition settles. (3) Presenter card (slide 2): Shrijayan's card now reads "Base Agent . Conversation summarization" via ownsBaseAgent flag on SPEAKERS + presenterCards() prefix in components.js. (4) Removed dead agendaRow() helper from components.js (was only used by the old agenda panel). Title-slide small QR kept as-is. NOT committed - user wants to review first.
+
+---
+
+## [2026-08-14] Notebook: fix routing model display + restructure routing demo
+
+Scope: `notebooks/optimizing_llm_apps.ipynb` only (no library code changed).
+
+Problem reported: the routing demo "always looked like it routed to the high
+model," and it was unclear whether the shown model was even the one that
+answered.
+
+Root cause: the notebook harness `WorkshopSession.ask()` printed
+`self.config.model` in its per-turn `↳` summary. That's always the base model
+(`deepseek/...`, the HIGH tier), regardless of which tier actually answered.
+The real routed model was recorded correctly (RoutingTracker + `usage.by_model`
+via `replace(response, model=...)` in `optimizations/hybrid_routing.py`) but
+never displayed inline. So routing WAS working (cheap/mid), the label just lied.
+
+Changes:
+- Added a small display-fix cell after the harness cell that rebinds
+  `WorkshopSession.ask` to name the tier(s)/model(s) that actually answered each
+  turn, read from `self.routing_tracker.records` (falls back to `config.model`
+  for non-routing sessions). Monkeypatch rather than editing the 393-line harness
+  cell to keep the change low-risk and localized.
+- Restructured the routing section into: (1) a difficulty-preview cell that
+  scores a new `ROUTING_PROMPTS` set with the repo's own `score_difficulty` /
+  `starting_index` before any model runs; (2) a gate-OFF run (pre-router alone)
+  via `AGENT_ROUTING_QUALITY_GATE_ENABLED=false`; (3) a gate-ON cascade run
+  (`=true`) comparing gate off vs on on the same prompts. The env toggle is read
+  by `Config.from_env()` at `hybrid_routing.build()` time, which happens inside
+  `run_scenario`'s `WorkshopSession(...)`, so setting it in the cell before the
+  call takes effect.
+- `ROUTING_PROMPTS` verified offline with the repo scorer: 3 short prompts score
+  0.00-0.06 (cheap), 2 dense multi-clause prompts score 0.49/0.52 (mid), none
+  forced to high - the requested "few cheap, few mid" split.
+- Kept the original `opt_routing = run_scenario(..., DEMO_PROMPTS)` cell (now
+  explicitly resets the gate to on) so the scoreboard row stays comparable with
+  the other optimizations measured on `DEMO_PROMPTS`.
+- Updated the routing intro markdown to describe the two-step gate-off-then-on
+  narrative.
+
+Note for future edits: `score_difficulty` keys only off the latest user text, so
+tier selection is independent of playground file state; the mid prompts sit at
+0.49/0.52 (above the 0.45 cheap ceiling) - keep that margin if reworded.
+
+---
+
+## [2026-08-14] Swap cheap tier from google/gemma-3.4b to mistralai/mistral-nemo
+
+Reason: the gemma slug wasn't serving reliably on the workshop OpenRouter
+gateway, so cheap-tier sends were erroring and cascading up (recorded as
+`tier_error`) even with the quality gate off. Replaced it with
+`mistralai/mistral-nemo` (priced $0.019 in / $0.03 out per 1M).
+
+Changed the cheap-tier model everywhere it's a live reference (historical
+agentlog entries left intact - append-only):
+- `models.yaml`: catalog entry renamed to `mistralai/mistral-nemo` with the new
+  prices + description, the "supported presets" comment, and `routing.tiers`
+  cheap rung.
+- `.env.example`: the low-preset hint comment.
+- `README_ROUTING.md`: the example ladder's cheap rung.
+- `tests/test_models_config.py`: cheap-tier slug + catalog-metadata lookup now
+  assert `mistralai/mistral-nemo`.
+- `notebooks/optimizing_llm_apps.ipynb`: routing intro tier table (model + $/M),
+  and re-ran the difficulty-preview cell so its output shows nemo, not gemma.
+
+Verified: `load_tiers()` resolves cheap -> mistralai/mistral-nemo (openrouter),
+pricing 1M/1M = $0.0490, catalog contains nemo and no longer gemma;
+`tests/test_models_config.py` 11 passed.
