@@ -206,6 +206,22 @@ section.present .notebook-cue { animation: tw-pop 0.5s 0.35s cubic-bezier(.2,.7,
   padding: 10px 12px; border-width: 2px;
 }
 
+/* fake chat input bar - decorative, sells the "this is a chat window" frame */
+.sumlab .chat-input {
+  margin-top: auto; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--tw-hair); background: #fff; border-radius: 999px;
+  padding: 6px 7px 6px 14px;
+}
+.sumlab .chat-input .ph {
+  font-size: 0.68em; color: var(--tw-ink-soft); font-family: var(--tw-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+.sumlab .chat-input .send {
+  background: var(--tw-wave); color: #eaf4f6; font-weight: 700; font-size: 0.58em;
+  border-radius: 999px; padding: 5px 12px; letter-spacing: 0.04em; white-space: nowrap;
+}
+
 /* -------- side panel: summarizer node + before/after readout -------- */
 .sumlab .side { display: flex; flex-direction: column; gap: 14px; justify-content: flex-start; padding-top: 32px; }
 .sumlab .summarizer {
