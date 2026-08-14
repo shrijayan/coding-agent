@@ -1,5 +1,5 @@
 /* ==================================================== 50 · CONTEXT PRUNING
-   Technique #4a - LIVE in the repo. One half of context_window.py: once a
+   Technique #5a - LIVE in the repo. One half of context_window.py: once a
    tool result falls outside the recent-message window and is bulky, replace
    it with a short placeholder instead of resending it forever. Always on
    when context-window is enabled (the other half, skills-on-demand, is its
@@ -30,7 +30,7 @@ Deck.add({
   cost: 0.0400,
   html: `
     <div class="slide-head">
-      <div class="kicker">04a &middot; Context pruning</div>
+      <div class="kicker">05a &middot; Context pruning</div>
       <h2>Not everything deserves a seat</h2>
     </div>
     <div class="split top" style="grid-template-columns:1fr 1fr;">
@@ -65,7 +65,7 @@ Deck.add({
   id: "cw-plan",
   html: `
     <div class="slide-head">
-      <div class="kicker">04a &middot; Where it plugs in</div>
+      <div class="kicker">05a &middot; Where it plugs in</div>
       <h2>Same hook as summarization &mdash; with a catch</h2>
     </div>
     <div class="card-grid cols-2" style="margin-top:20px;">

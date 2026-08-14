@@ -18,8 +18,8 @@ window.SPEAKERS = [
 // Keyed by the id each slide file uses to look itself up (TW.techMeta("routing"), ...).
 // `primary: true` marks the six techniques listed on the recap slide;
 // sub-techniques (like cache-friendly, technique 02b) are omitted there.
-// context-window used to be one technique (04) covering two mechanisms; it's
-// split into 04a/04b because context_window.py really does run them as two
+// context-window used to be one technique (05) covering two mechanisms; it's
+// split into 05a/05b because context_window.py really does run them as two
 // separate things - one always-on (pruning, via history_policy), one gated
 // by its own independent env var (skills, via extra_tools) - and the
 // notebook demonstrates each in its own dedicated cell/scenario, not just
@@ -68,8 +68,19 @@ window.TECHNIQUES = {
     meterNote: "cost ↓ — cheap model does the easy work",
     primary: true,
   },
+  "loop-prevention": {
+    number: "04",
+    title: "Agent loop prevention",
+    status: "live",
+    flag: "--enable loop-guard",
+    accent: "flamingo",
+    owner: "adithya",
+    icon: "loop",
+    meterNote: "caps runaway cost when the agent spins",
+    primary: true,
+  },
   "context-pruning": {
-    number: "04a",
+    number: "05a",
     title: "Context pruning",
     status: "live",
     flag: "--enable context-window",
@@ -80,7 +91,7 @@ window.TECHNIQUES = {
     primary: true,
   },
   "context-skills": {
-    number: "04b",
+    number: "05b",
     title: "Skills, loaded on demand",
     status: "live",
     flag: "--enable context-window",
@@ -88,17 +99,6 @@ window.TECHNIQUES = {
     owner: "adithya",
     icon: "stack",
     meterNote: "guidance loads only when load_skill() is actually called",
-    primary: true,
-  },
-  "loop-prevention": {
-    number: "05",
-    title: "Agent loop prevention",
-    status: "live",
-    flag: "--enable loop-guard",
-    accent: "flamingo",
-    owner: "adithya",
-    icon: "loop",
-    meterNote: "caps runaway cost when the agent spins",
     primary: true,
   },
 };

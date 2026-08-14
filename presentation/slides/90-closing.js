@@ -18,9 +18,9 @@ Deck.add({
         ${TW.recapRow('summarization')}
         ${TW.recapRow('prompt-caching')}
         ${TW.recapRow('routing')}
+        ${TW.recapRow('loop-prevention')}
         ${TW.recapRow('context-pruning')}
         ${TW.recapRow('context-skills')}
-        ${TW.recapRow('loop-prevention')}
       </tbody>
     </table>
     <p class="muted" style="font-size:0.82em;margin-top:16px;">Every row is proven the same way: run the task, read the meter, compare before vs after. <b>No estimates.</b></p>

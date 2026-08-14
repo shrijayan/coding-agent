@@ -1,5 +1,5 @@
-/* ================================================= 60 · AGENT LOOP PREVENTION
-   Technique #5 - LIVE in the repo. Agents get stuck: same failing tool call on
+/* ================================================= 45 · AGENT LOOP PREVENTION
+   Technique #4 - LIVE in the repo. Agents get stuck: same failing tool call on
    repeat, burning tokens and money. Detect the loop and break it. The
    concept demo keeps fragments + HUD; the plan slide is static.
 ============================================================================ */
@@ -26,7 +26,7 @@ Deck.add({
   cost: 0.0300,
   html: `
     <div class="slide-head">
-      <div class="kicker">05 &middot; Agent loop prevention</div>
+      <div class="kicker">04 &middot; Agent loop prevention</div>
       <h2>Spot the lap, stop the spend</h2>
     </div>
     <div class="split top" style="grid-template-columns:1fr 1fr;">
@@ -61,7 +61,7 @@ Deck.add({
   id: "lp-plan",
   html: `
     <div class="slide-head">
-      <div class="kicker">05 &middot; How it layers with the existing caps</div>
+      <div class="kicker">04 &middot; How it layers with the existing caps</div>
       <h2>From blunt caps to real detection</h2>
     </div>
     <div class="card-grid cols-3" style="margin-top:20px;">

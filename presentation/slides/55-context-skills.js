@@ -1,10 +1,10 @@
 /* ================================================= 55 · SKILLS, LOADED ON DEMAND
-   Technique #4b - LIVE in the repo. The other half of context_window.py:
+   Technique #5b - LIVE in the repo. The other half of context_window.py:
    the system prompt carries only a short menu (name + one-line
    description) for each skill; the full guidance only enters context when
    the model actually calls load_skill(name). Independently gated by its own
    env var (AGENT_CONTEXT_WINDOW_SKILLS_ENABLED, default true) - can be
-   switched off while pruning (4a) stays on. Composes with ANY optimization
+   switched off while pruning (5a) stays on. Composes with ANY optimization
    (extra_tools + system_prompt_suffix), unlike pruning, which is locked to
    history_policy's single-owner rule.
 ============================================================================ */
@@ -31,7 +31,7 @@ Deck.add({
   cost: 0.0210,
   html: `
     <div class="slide-head">
-      <div class="kicker">04b &middot; Skills, loaded on demand</div>
+      <div class="kicker">05b &middot; Skills, loaded on demand</div>
       <h2>Pay for the menu, not the whole shelf</h2>
     </div>
     <div class="split top" style="grid-template-columns:1fr 1fr;">
@@ -69,7 +69,7 @@ Deck.add({
   id: "cs-how",
   html: `
     <div class="slide-head">
-      <div class="kicker">04b &middot; Where it plugs in</div>
+      <div class="kicker">05b &middot; Where it plugs in</div>
       <h2>A tool, not a history policy</h2>
     </div>
     <div class="card-grid cols-2" style="margin-top:20px;">
