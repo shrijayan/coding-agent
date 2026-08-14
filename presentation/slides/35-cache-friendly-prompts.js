@@ -101,44 +101,22 @@ Deck.add({
 });
 
 Deck.add({
-  id: "cf-payoff",
-  hud: true,
-  tokens: 6150,
-  cost: 0.0360,
+  id: "cf-notebook",
   html: `
-    <div class="slide-head">
-      <div class="kicker">02b &middot; The caching payoff</div>
-      <h2>Pay full price once, ~10% every turn after</h2>
-    </div>
-    <div class="split" style="grid-template-columns:1fr 1fr;">
-      <div class="col">
-        <div class="stack-sm">
-          <div class="fragment fade-in callout" data-fragment-index="0"
-               data-cost="0.0378" data-hint="full price on the whole prefix">
-            <b>Without caching:</b> the whole stable prefix is re-charged at full price &mdash; every turn.
-          </div>
-          <div class="fragment fade-in callout" data-fragment-index="1" style="border-left-color:var(--tw-jade);"
-               data-cost="0.0384" data-hint="cache hit: prefix billed ~10%"
-               data-tokens="6150">
-            <b>With a cache hit:</b> the byte-stable prefix is billed at ~10%. Only the new tokens pay full price.
-          </div>
-          <div class="fragment fade-in" data-fragment-index="2">
-            <div class="bignum"><div class="n">~85%<span class="unit"> less</span></div><div class="lbl">projected input-token cost on cached turns</div></div>
-          </div>
+    <div class="center-v">
+      <div class="kicker">Your turn &mdash; hands on</div>
+      <h2>Watch the prefix stay put</h2>
+      <p class="lead" style="max-width:46ch;">Run a multi-turn task and watch the stable-prefix fingerprint stay identical while reuse climbs turn over turn.</p>
+      <div class="notebook-cue">
+        <div class="nb-ic">Jy</div>
+        <div class="nb-tx">
+          <div class="t">Notebook &rarr; &ldquo;Optimization 2b &mdash; Cache-friendly prompts&rdquo;</div>
+          <div class="s">Run the shared task set, then check the cache report for prefix reuse.</div>
         </div>
+        <div class="nb-cmd">${TW.techFlag('cache-friendly')}</div>
       </div>
-      <div class="col">
-        <div class="stack-sm">
-          <div class="tw-card wave">
-            <div class="cap">Where it plugs in</div>
-            <div class="body">A <code>ProviderCacheAdapter</code> seam sits at the API boundary, ready for a vendor-specific cache hint &mdash; the default passes requests through unchanged.</div>
-          </div>
-          <div class="callout" style="border-left-color:var(--tw-turmeric);">
-            Caching doesn't cut tokens &mdash; it cuts the <b>price</b> of the ones that must repeat. The complement to sending fewer.
-          </div>
-        </div>
-      </div>
+      <p class="muted" style="font-size:0.82em;margin-top:18px;">One stable fingerprint across every call is the win &mdash; it means a cache has something byte-stable to reuse.</p>
     </div>
   `,
-  notes: `Krishna Chaitanya. This is the caching economics, and it only fires because of the byte-stable prefix we just built. The meter shows the TARGET economics of a cache hit - be explicit the dollar figure depends on a provider actually billing the cached prefix at a discount (~10%). What's live today: the deterministic prefix construction (previous slides) plus the ProviderCacheAdapter seam a vendor cache_control hint drops into. Point: caching doesn't cut tokens, it cuts the PRICE of the repeated ones - so the token gauge barely moves while cost growth flattens. That's the complement to prompt optimization, which cuts the token COUNT.`,
+  notes: `Hands on. Everyone runs the multi-turn task with cache-friendly construction on and reads /cache: distinct stable hashes should be 1 (the prefix never moved), avg prefix reuse rises across sends. This is the groundwork any real prompt-cache pass builds on.`,
 });
